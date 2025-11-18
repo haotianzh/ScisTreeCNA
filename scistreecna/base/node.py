@@ -12,6 +12,7 @@ class Node(object):
     >>> node = Node(1) # or
     >>> node = Node(identifier=1, name='ken', branch=10) # or
     """
+
     def __init__(self, identifier=None, name=None, branch=None):
         self.identifier = identifier
         if name is None:
@@ -27,7 +28,7 @@ class Node(object):
         if node.identifier == self.identifier:
             return True
         return False
-        
+
     def __hash__(self):
         return hash(self.identifier)
 
@@ -37,8 +38,8 @@ class Node(object):
 
     @identifier.setter
     def identifier(self, nid):
-        if nid is None or nid == '':
-            nid = str(binascii.hexlify(os.urandom(5)).decode('utf-8'))
+        if nid is None or nid == "":
+            nid = str(binascii.hexlify(os.urandom(5)).decode("utf-8"))
         self._identifier = nid
 
     @property
@@ -48,13 +49,13 @@ class Node(object):
     @branch.setter
     def branch(self, value):
         if self.parent is None:
-            raise Exception('node has no parent, branch cannot be assigned.')
+            raise Exception("node has no parent, branch cannot be assigned.")
         try:
             self._branch = float(value)
         except (ValueError, TypeError):
             # branch may not be a number, now we can assign any object attached to the branch
             # to be efficiently used on phylogeny and mutation tree
-            self._branch = value 
+            self._branch = value
 
     def is_root(self):
         return self.get_level() == 0
@@ -107,17 +108,19 @@ class Node(object):
         happened. (should be optimized in the future)
         """
         if node.identifier in [d.identifier for d in self.get_descendants()]:
-            raise Exception('node %s has already been added.' % node.identifier)
+            raise Exception("node %s has already been added." % node.identifier)
         if node.identifier in [a.identifier for a in self.get_ancestors()]:
-            raise Exception('parent %s cannot be added as a child.' % node.identifier)
+            raise Exception("parent %s cannot be added as a child." % node.identifier)
         self.children[node.identifier] = node
         self._children.append(node)
 
     def remove_child(self, node):
         if node.identifier not in self.children:
-            raise Exception('node %s is not a child of %s.' % (node.identifier, self.identifier))
+            raise Exception(
+                "node %s is not a child of %s." % (node.identifier, self.identifier)
+            )
         del self.children[node.identifier]
-        self._children.remove(node) 
+        self._children.remove(node)
 
     def get_children(self):
         return self._children
@@ -148,8 +151,6 @@ class Node(object):
     def set_branch(self, value):
         self.branch = value
 
-
     def apply_on_attr(self, attrname, func=None):
         if func is not None:
             setattr(self, attrname, func(self))
-

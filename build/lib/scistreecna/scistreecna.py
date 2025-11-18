@@ -904,9 +904,6 @@ def infer(
     reads,
     cn_min=1,
     cn_max=4,
-    ado=0.1,
-    seq_error=0.01,
-    af=0.5,
     cn_noise=0.05,
     tree_batch_size=64,
     node_batch_size=64,
@@ -926,7 +923,7 @@ def infer(
         LAMBDA_T=2 * n_cells - 1,
         verbose=False,
     )
-    probs = s.init_prob_leaves_gpu(reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af)
+    probs = s.init_prob_leaves_gpu(reads, cnerr=cn_noise, af=0.5)
     tree, likelihood = s.local_search_batch(
         probs,
         start_tree,

@@ -8,29 +8,29 @@ import warnings
 import time
 import random
 import numpy as np
-import os 
+import os
 import subprocess as sp
 from ..base import BaseTree, Node
 
 
 class TraversalGenerator(object):
     """
-        A generator class used for tree traversal
-        Arguments:
-            order: traversal order
-        >>> generator = TraversalGenerator(order='post')
-        >>> for node in generator(tree):
-                # to do something
-                pass
+    A generator class used for tree traversal
+    Arguments:
+        order: traversal order
+    >>> generator = TraversalGenerator(order='post')
+    >>> for node in generator(tree):
+            # to do something
+            pass
     """
 
-    def __init__(self, order='post'):
+    def __init__(self, order="post"):
         self.order = order
         self.iterator = None
 
-    def __call__(self, tree, order='post'):
+    def __call__(self, tree, order="post"):
         # calling function
-        valid_methods = {'pre': self._pre, 'in': self._in, 'post': self._post}
+        valid_methods = {"pre": self._pre, "in": self._in, "post": self._post}
         assert order in valid_methods, "order should be in ['pre', 'mid', 'post']"
         method = valid_methods[order]
         iterator = iter(method(tree))
@@ -51,12 +51,12 @@ class TraversalGenerator(object):
                         flag = True
                         node = child
                         break
-                if not flag: node = node.parent
+                if not flag:
+                    node = node.parent
             if node.identifier not in traverse_nodes:
                 traverse_nodes.append(node.identifier)
                 yield node
             node = node.parent
-                
 
     def _in(self, tree):
         # mid-order traverse
@@ -85,7 +85,7 @@ class TraversalGenerator(object):
 
     @order.setter
     def order(self, method):
-        valid_methods = {'pre': self._pre, 'in': self._in, 'post': self._post}
+        valid_methods = {"pre": self._pre, "in": self._in, "post": self._post}
         if method in valid_methods:
             self._order = method
             self._method = valid_methods[method]
@@ -94,54 +94,55 @@ class TraversalGenerator(object):
 
 
 def from_node(node: Node) -> BaseTree:
-    """ Build a tree by directly setting a root """
+    """Build a tree by directly setting a root"""
     tree = BaseTree(root=node)
     return tree
 
 
 def from_newick(newick: str) -> BaseTree:
-    """ Build a tree according to a newick-format string """
+    """Build a tree according to a newick-format string"""
+
     def _isvalid(s):
         checking_stack = []
         for ch in s:
-            checking_stack.append(ch) if ch == '(' else None
-            if ch == ')':
+            checking_stack.append(ch) if ch == "(" else None
+            if ch == ")":
                 if checking_stack:
                     checking_stack.pop()
                 else:
                     return False
-        return True if not checking_stack and ch == ';' else False
+        return True if not checking_stack and ch == ";" else False
 
     def _next(i):
-        stop_words = [',', ')', ';']
+        stop_words = [",", ")", ";"]
         if newick[i] in stop_words:
             return None, 0, i
         br = 0
         j = i + 1
         while newick[j] not in stop_words:
             j += 1
-        if ':' in newick[i:j]:
-            nid, br = newick[i:j].split(':')
+        if ":" in newick[i:j]:
+            nid, br = newick[i:j].split(":")
         else:
             nid = newick[i:j]
         return nid.strip(), br, j
 
     newick = newick.strip()
-    assert isinstance(newick, str), Exception('newick should be a string.')
-    assert _isvalid(newick), Exception('invalid newick string.')
+    assert isinstance(newick, str), Exception("newick should be a string.")
+    assert _isvalid(newick), Exception("invalid newick string.")
     nodes = []
-    level, i, key = 0, 0, ''
-    while not newick[i] == ';':
-        if newick[i] in [',', ' ']:
+    level, i, key = 0, 0, ""
+    while not newick[i] == ";":
+        if newick[i] in [",", " "]:
             i += 1
             continue
-        if newick[i] == '(':
+        if newick[i] == "(":
             level += 1
             i += 1
             continue
-        if newick[i] == ')':
+        if newick[i] == ")":
             if not nodes:
-                raise Exception('newick: bad parsing.')
+                raise Exception("newick: bad parsing.")
             identifier, branch, end = _next(i + 1)
             node = Node(identifier=identifier, branch=branch)
             while nodes:
@@ -172,20 +173,20 @@ def apply_attr_on_tree(tree, attrname, func=None):
 
 
 # perturb the branch lengths for data without clock property
-def perturb_tree_length(tree, min=.5, max=1.5, mode='mul'):
+def perturb_tree_length(tree, min=0.5, max=1.5, mode="mul"):
     tree = tree.copy()
     for node_str in tree.get_all_nodes():
         node = tree[node_str]
         if not node.is_root():
             try:
-                if mode == 'mul':
+                if mode == "mul":
                     rand = np.random.uniform(min, max)
                     node.branch = np.round(node.branch * rand, 4)
-                if mode == 'add':
+                if mode == "add":
                     rand = np.random.rand()
                     node.branch = np.round(node.branch + rand, 4)
             except ValueError:
-                raise Exception('branch is not a valid number')
+                raise Exception("branch is not a valid number")
     return tree
 
 
@@ -196,10 +197,10 @@ def relabel(tree, offset=0, name_map=None):
     tree = tree.copy()
     # try:
     if offset != 0 and name_map:
-        raise Exception('error, both offset and name_map are specified')
+        raise Exception("error, both offset and name_map are specified")
     elif offset != 0:
         for leaf in tree.get_leaves():
-            tree[leaf].name = str(int(tree[leaf].name)+offset)
+            tree[leaf].name = str(int(tree[leaf].name) + offset)
     elif offset == 0 and name_map == None:
         pass
     else:
@@ -218,8 +219,10 @@ def relabel(tree, offset=0, name_map=None):
     Author: haotian Z
     Date: 12/27/22
 """
+
+
 class BNode(Node):
-    # extended Node class for recording mutations 
+    # extended Node class for recording mutations
     def __init__(self, identifier=None, name=None, branch=0):
         super().__init__(identifier, name, branch)
         self.mutations = []
@@ -231,13 +234,13 @@ class BNode(Node):
 #  vanilla implementation takes O(nm^2) that simply check every pair of columns to see if they are disjoint or one includes the other one.
 def check_no_conflict_vanilla(mat):
     nrow, ncol = mat.shape
-    gametes = [[0,1], [1,0], [1,1]]
+    gametes = [[0, 1], [1, 0], [1, 1]]
     for i in range(ncol):
         for j in range(ncol):
             flag = False
             for gamete in gametes:
                 # print(gamete, mat[:, [i,j]])
-                if gamete not in mat[:, [i,j]].tolist():
+                if gamete not in mat[:, [i, j]].tolist():
                     flag = True
                     break
             if not flag:
@@ -256,7 +259,7 @@ def binary_number(arr):
     for i, ele in enumerate(arr[::-1]):
         if ele:
             s += 2**i
-    return s 
+    return s
 
 
 # sort by binary numbers and remove duplicates
@@ -264,20 +267,23 @@ def rearrangement(mat):
     nrow, ncol = mat.shape
     binary_strs = []
     for i in range(ncol):
-        binary_strs.append(''.join([str(val) for val in mat[:, i]]))
-    sorted_index = sorted(range(ncol), key=lambda x:binary_strs[x], reverse=True)
+        binary_strs.append("".join([str(val) for val in mat[:, i]]))
+    sorted_index = sorted(range(ncol), key=lambda x: binary_strs[x], reverse=True)
     # build index and remove duplicates
     groups = {}
     group = []
     final_index = []
     for i in range(ncol):
         group.append(sorted_index[i])
-        if i==ncol-1 or binary_strs[sorted_index[i]] != binary_strs[sorted_index[i+1]]:
+        if (
+            i == ncol - 1
+            or binary_strs[sorted_index[i]] != binary_strs[sorted_index[i + 1]]
+        ):
             final_index.append(sorted_index[i])
             groups[sorted_index[i]] = group
             group = []
     return final_index, groups
-    
+
 
 # get a matrix for determining L(j)
 def preprocess(mat):
@@ -289,9 +295,9 @@ def preprocess(mat):
     for i in range(mat_.shape[0]):
         pre = 0
         for j in range(mat_.shape[1]):
-            if mat_[i,j] == 1:
-                pre_mat[i,j] = pre
-                pre = j+1
+            if mat_[i, j] == 1:
+                pre_mat[i, j] = pre
+                pre = j + 1
     return mat_, pre_mat, indices, groups
 
 
@@ -302,7 +308,7 @@ def check_no_conflict(mat):
     for j in range(L.shape[1]):
         maxx = L[:, j].max()
         for i in range(L.shape[0]):
-            if mat_[i,j] == 1 and L[i,j] != maxx:
+            if mat_[i, j] == 1 and L[i, j] != maxx:
                 return False
     return True
 
@@ -311,11 +317,11 @@ def check_no_conflict(mat):
 def build_perfect_phylogeny(mat):
     mat = remove_homozygous_columns(mat)
     if not check_no_conflict(mat):
-        raise Exception('This are some conflicts in the matrix provided.')
+        raise Exception("This are some conflicts in the matrix provided.")
     mat_, L, indices, groups = preprocess(mat)
     L = np.max(L, axis=0)
     # step 1: build mutation tree
-    root = BNode(identifier='root')
+    root = BNode(identifier="root")
     mutation_nodes = {}
     for mutation in groups:
         node = BNode()
@@ -328,7 +334,7 @@ def build_perfect_phylogeny(mat):
             root.add_child(mutation_nodes[mutation])
             mutation_nodes[mutation].set_parent(root)
         else:
-            mutation_from = indices[L[j]-1]
+            mutation_from = indices[L[j] - 1]
             mutation_to = indices[j]
             node_from = mutation_nodes[mutation_from]
             node_to = mutation_nodes[mutation_to]
@@ -338,12 +344,12 @@ def build_perfect_phylogeny(mat):
     # step 2: add cells into the mutation tree
     nrow, ncol = mat_.shape
     for i in range(nrow):
-        max_index = ncol-np.argmax(mat_[i][::-1])-1
+        max_index = ncol - np.argmax(mat_[i][::-1]) - 1
         last_mutation_node = mutation_nodes[indices[max_index]]
         leaf_node = BNode(identifier=i)
         last_mutation_node.add_child(leaf_node)
         leaf_node.set_parent(last_mutation_node)
-    
+
     # phylogeny = popgen.utils.from_node(root)
     # phylogeny.print()
     # step 3: tree prune
@@ -362,17 +368,17 @@ def build_perfect_phylogeny(mat):
 
 def single_spr_move(tree, verbose=False):
     """
-        Note: only for binary tree
-        a spr move is to randomly select a node and swap its parent with another node
-        the parent node should not be the root and the other node cannot be its descendant
-        return a new tree
+    Note: only for binary tree
+    a spr move is to randomly select a node and swap its parent with another node
+    the parent node should not be the root and the other node cannot be its descendant
+    return a new tree
 
-        1. allow the subtree directly under the root
+    1. allow the subtree directly under the root
     """
     tmp_tree = tree
     while True:
         tree = tmp_tree.copy()
-        nodes = list(tree.get_all_nodes()) # identifiers
+        nodes = list(tree.get_all_nodes())  # identifiers
         node = tree[random.choice(nodes)]
         parent = node.parent
         if node.is_root():
@@ -397,13 +403,13 @@ def single_spr_move(tree, verbose=False):
             continue
         break
     if verbose:
-        print('spr remove: ', node.identifier)
+        print("spr remove: ", node.identifier)
     while True:
         new_sibling = random.choice(candidates)
         if new_sibling == sibling:
             continue
         if verbose:
-            print('spr regraft: ', new_sibling.identifier)
+            print("spr regraft: ", new_sibling.identifier)
         if new_sibling.is_root():
             parent.add_child(new_sibling)
             new_sibling.set_parent(parent)
@@ -413,10 +419,11 @@ def single_spr_move(tree, verbose=False):
             new_sibling.parent.remove_child(new_sibling)
             new_sibling.parent.add_child(parent)
             parent.set_parent(new_sibling.parent)
-            new_sibling.set_parent(parent)        
+            new_sibling.set_parent(parent)
         break
     tree._update()
     return tree
+
 
 # def single_spr_move(tree):
 #     """
@@ -427,7 +434,7 @@ def single_spr_move(tree, verbose=False):
 #     """
 #     tree = tree.copy()
 #     nodes = list(tree.get_all_nodes()) # identifiers
-    
+
 #     while True:
 #         node = tree[random.choice(nodes)]
 #         parent = node.parent
@@ -443,7 +450,7 @@ def single_spr_move(tree, verbose=False):
 #                 candidates.append(n)
 #         if not candidates:
 #             continue
-                
+
 #         new_sibling = random.choice(candidates)
 #         if new_sibling.is_root():
 #             continue
@@ -451,7 +458,7 @@ def single_spr_move(tree, verbose=False):
 #             continue
 #         # swap
 #         # print('node', node.identifier)
-#         # print('sib', new_sibling.identifier)  
+#         # print('sib', new_sibling.identifier)
 #         grandparent = parent.parent
 #         sibling = parent.get_children()[0]
 #         grandparent.remove_child(parent)
@@ -478,20 +485,33 @@ def spr_move(tree, move):
     return tree
 
 
-def spr_distance_cpp(newick1, newick2, upper_bound=None, spr_exec_path='/home/haz19024/softwares/rspr/rspr'):
+def spr_distance_cpp(
+    newick1,
+    newick2,
+    upper_bound=None,
+    spr_exec_path="/home/haz19024/softwares/rspr/rspr",
+):
     """
     Computes the SPR distance between two vectors.
     """
     assert os.path.exists(spr_exec_path), "rSPR binary file not found."
     if not upper_bound:
-        a = sp.run([spr_exec_path, "-bb", "-q"], input=f'{newick1}\n{newick2}'.encode(), stdout=sp.PIPE)
+        a = sp.run(
+            [spr_exec_path, "-bb", "-q"],
+            input=f"{newick1}\n{newick2}".encode(),
+            stdout=sp.PIPE,
+        )
     else:
-        a = sp.run([spr_exec_path, "-bb", "-q", "-split-approx", str(upper_bound)], input=f'{newick1}\n{newick2}'.encode(), stdout=sp.PIPE)
-    result = a.stdout.decode().split('\n')[-2].split('=')[1]
-    return float(result) 
+        a = sp.run(
+            [spr_exec_path, "-bb", "-q", "-split-approx", str(upper_bound)],
+            input=f"{newick1}\n{newick2}".encode(),
+            stdout=sp.PIPE,
+        )
+    result = a.stdout.decode().split("\n")[-2].split("=")[1]
+    return float(result)
 
 
-def spr_distance(tree1, tree2):    
+def spr_distance(tree1, tree2):
     newick1 = str(tree1)
     newick2 = str(tree2)
     return spr_distance_cpp(newick1, newick2)
@@ -501,7 +521,7 @@ def get_random_binary_tree(n_leave, start_index=0, random_branch=True, seed=None
     # create a random binary tree given the number of leaves
     if seed:
         np.random.seed(seed)
-    nodes = [BNode(identifier=i) for i in range(start_index, n_leave+start_index)]
+    nodes = [BNode(identifier=i) for i in range(start_index, n_leave + start_index)]
     while len(nodes) > 1:
         i = np.random.randint(0, len(nodes))
         j = np.random.randint(0, len(nodes))
@@ -515,8 +535,8 @@ def get_random_binary_tree(n_leave, start_index=0, random_branch=True, seed=None
             nodes[j].branch = np.round(np.random.rand(), 4)
         nodes[i].set_parent(node)
         nodes[j].set_parent(node)
-        nodes.pop(max(i,j))
-        nodes.pop(min(i,j))
+        nodes.pop(max(i, j))
+        nodes.pop(min(i, j))
         nodes.append(node)
     root = nodes.pop()
     tree = from_node(root)

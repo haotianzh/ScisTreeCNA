@@ -1,4 +1,4 @@
-import os 
+import os
 from .. import simulate
 from .. import util
 
@@ -26,16 +26,20 @@ def write_to_dice(reads, output_file="dice_input.tsv"):
                 f.write(f"{cell_name}\t{chrom}\t{start}\t{end}\t{cn_state}\n")
             start += 1000000
             end += 1000000
-    
 
-def infer_dice_tree(reads, executable='/home/haz19024/miniconda3/envs/scistree2/bin/dice', tempfile='dice_tmp'):
+
+def infer_dice_tree(
+    reads,
+    executable="/home/haz19024/miniconda3/envs/scistree2/bin/dice",
+    tempfile="dice_tmp",
+):
     n_cells = reads.shape[1]
     write_to_dice(reads)
-    PATH = '/home/haz19024/miniconda3/envs/scistree2/bin/'
-    os.system(f'{executable} -i dice_input.tsv -t -o {tempfile} -m balME')
-    with open(f'{tempfile}/standard_root_balME_tree.nwk', 'r') as f:
+    PATH = "/home/haz19024/miniconda3/envs/scistree2/bin/"
+    os.system(f"{executable} -i dice_input.tsv -t -o {tempfile} -m balME")
+    with open(f"{tempfile}/standard_root_balME_tree.nwk", "r") as f:
         dice_nwk = f.readline().strip()
     dice_tree = util.from_newick(dice_nwk)
-    dice_name_map = {f'leaf{i}': str(i) for i in range(n_cells)}
+    dice_name_map = {f"leaf{i}": str(i) for i in range(n_cells)}
     dice_tree = util.relabel(dice_tree, name_map=dice_name_map)
     return dice_tree

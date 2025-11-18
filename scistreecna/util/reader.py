@@ -1,9 +1,9 @@
-import os 
+import os
 import numpy as np
-import pandas as pd 
+import pandas as pd
 
 
-def read_vcf(vcf_filepath, key='AD'):
+def read_vcf(vcf_filepath, key="AD"):
     """
     Reads a VCF file and extracts the Allelic Depth (AD) for each sample at each site.
 
@@ -24,30 +24,34 @@ def read_vcf(vcf_filepath, key='AD'):
     sample_names = []
     ad_matrix = []
 
-    assert os.path.exists(vcf_filepath), (f"Error: VCF file not found at '{vcf_filepath}'")
+    assert os.path.exists(
+        vcf_filepath
+    ), f"Error: VCF file not found at '{vcf_filepath}'"
 
-    with open(vcf_filepath, 'r') as f:
+    with open(vcf_filepath, "r") as f:
         site_names = []
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            if line.startswith('#CHROM'):
-                parts = line.split('\t')
+            if line.startswith("#CHROM"):
+                parts = line.split("\t")
                 sample_names = parts[9:]
                 continue
-            if line.startswith('#'):
+            if line.startswith("#"):
                 continue
-            parts = line.split('\t')
+            parts = line.split("\t")
             if len(parts) < 9:
                 print(f"Warning: Skipping malformed line (too few columns): {line}")
                 continue
             format_str = parts[8]
-            format_fields = format_str.split(':')
+            format_fields = format_str.split(":")
             try:
                 ad_index = format_fields.index(key)
             except ValueError:
-                print(f"Info: Skipping line because {key} not found in FORMAT: CHR[{parts[0]}], POS[{parts[1]}]")
+                print(
+                    f"Info: Skipping line because {key} not found in FORMAT: CHR[{parts[0]}], POS[{parts[1]}]"
+                )
                 continue
             chrom = parts[0]
             pos = parts[1]
@@ -56,17 +60,17 @@ def read_vcf(vcf_filepath, key='AD'):
             site_ad_data = []
             for sample_gt_str in parts[9:]:
                 ref_reads, alt_reads = 0, 0
-                gt_fields = sample_gt_str.split(':')
+                gt_fields = sample_gt_str.split(":")
                 if ad_index < len(gt_fields):
                     ad_value_str = gt_fields[ad_index]
-                    if ad_value_str != '.' and ',' in ad_value_str:
+                    if ad_value_str != "." and "," in ad_value_str:
                         try:
-                            ad_parts = ad_value_str.split(',')
+                            ad_parts = ad_value_str.split(",")
                             ref_reads = int(ad_parts[0])
                             alt_reads = int(ad_parts[1])
                             # copy_number = int(ad_parts[2])
                         except (ValueError, IndexError):
-                            print('valuesss')
+                            print("valuesss")
                             pass
                 site_ad_data.append((ref_reads, alt_reads))
             ad_matrix.append(site_ad_data)
@@ -91,7 +95,7 @@ def convert_2d_string_array_to_3d(input_2d_array):
 
     for i in range(num_rows):
         for j in range(num_cols):
-            parts = input_2d_array[i][j].split('|')
+            parts = input_2d_array[i][j].split("|")
             if len(parts) == 2:
                 try:
                     x_val = int(parts[0])
@@ -99,10 +103,14 @@ def convert_2d_string_array_to_3d(input_2d_array):
                     z_val = int(parts[2])
                     result_3d_array[i, j] = [x_val, y_val, z_val]
                 except ValueError:
-                    print(f"Warning: Could not convert '{input_2d_array[i][j]}' to integers. Storing as original string parts.")
+                    print(
+                        f"Warning: Could not convert '{input_2d_array[i][j]}' to integers. Storing as original string parts."
+                    )
                     result_3d_array[i, j] = parts
             else:
-                print(f"Warning: Unexpected format for string '{input_2d_array[i][j]}'. Expected 'x|y'.")
+                print(
+                    f"Warning: Unexpected format for string '{input_2d_array[i][j]}'. Expected 'x|y'."
+                )
                 result_3d_array[i, j] = [None, None]
     return result_3d_array
 
@@ -121,14 +129,19 @@ def read_csv(csv_filepath, reads=False):
             - A list of sample names.
             - A list of site names.
     """
-    assert os.path.exists(csv_filepath), (f"Error: CSV file not found at '{csv_filepath}'")
+    assert os.path.exists(
+        csv_filepath
+    ), f"Error: CSV file not found at '{csv_filepath}'"
     df = pd.read_csv(csv_filepath, index_col=0)
     sample_names = df.columns.to_list()
     site_names = df.index.to_list()
-    return convert_2d_string_array_to_3d(df.values) if reads else df.values, sample_names, site_names
-
+    return (
+        convert_2d_string_array_to_3d(df.values) if reads else df.values,
+        sample_names,
+        site_names,
+    )
 
 
 if __name__ == "__main__":
-    a = read_vcf('../../examples/test.vcf')
+    a = read_vcf("../../examples/test.vcf")
     print(a)

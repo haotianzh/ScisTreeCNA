@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scistreecna"     
+dynamic = ["version"]     
+description = "ScisTreeCNA: accurate probabilistic reconstruction of cell lineage tree from SNVs and CNAs"
+readme = "README.md" 
+requires-python = ">=3.6" 
+license = { text = "GPL3" }
+authors = [
+    { name = "Haotian Zhang", email = "haotianzh@uconn.edu" },
+    { name = "Yufeng Wu", email = "yufeng.wu@uconn.edu" }
+]
+keywords = ["cell lineage tree", "fast inference", "copy number alteration", "single-cell sequencing", "SNV", "CNA"]
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "pptree",
+    "scistree2",
+    "phytreeviz",
+    "scikit-learn",
+    "scipy",
+    "tqdm",
+    "biopython"
+]
+
+[project.optional-dependencies]
+# For users with CUDA 13.x
+cuda13x = ["cupy-cuda13x"]
+# For users with CUDA 12.x
+cuda12x = ["cupy-cuda12x"]
+# For users with CUDA 11.x
+cuda11x = ["cupy-cuda11x"]
+# For users with CUDA 10.2 (older, but good for completeness)
+cuda102 = ["cupy-cuda102"]
+
+
+[tool.setuptools]
+packages = ["scistreecna"]
+
+[tool.setuptools.dynamic]
+version = {attr = "scistreecna.__version__"}
+
+[project.urls]
+Homepage = "https://github.com/haotianzh/ScisTreeCNA"
+"Bug Tracker" = "https://github.com/haotianzh/ScisTreeCNA/issues"

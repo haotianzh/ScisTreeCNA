@@ -1,7 +1,7 @@
-import cupy as cp 
+import cupy as cp
 
 
-kernel_log_probability = r'''
+kernel_log_probability = r"""
 extern "C" __global__
 void compute_genotype_log_probs(
     float* ref, float* alt, float* cn,
@@ -91,10 +91,10 @@ void compute_genotype_log_probs(
         out[tid * N + i] = log_probs[i] - logZ;
     }
 }
-'''
+"""
 
 # TODO: inlcuding 0 copy.
-kernel_log_probability_cn_noise_with_zero_copy = r'''
+kernel_log_probability_cn_noise_with_zero_copy = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
     float* ref, float* alt, float* cn,
     float* afs, float* out,
@@ -197,9 +197,9 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
         out[tid * N + i] = log_probs[i] - logZ;
     }
 }
-'''
+"""
 
-kernel_log_probability_cn_noise = r'''
+kernel_log_probability_cn_noise = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
     float* ref, float* alt, float* cn,
     float* afs, float* out,
@@ -294,9 +294,9 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
         out[tid * N + i] = log_probs[i];
     }
 }
-'''
+"""
 
-kernel_log_probability_cn_noise_original = r'''
+kernel_log_probability_cn_noise_original = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
     float* ref, float* alt, float* cn,
     float* afs, float* out,
@@ -399,11 +399,10 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
         out[tid * N + i] = log_probs[i] - logZ;
     }
 }
-'''
+"""
 
 
-
-kernel_log_probability_cn_noise2 = r'''
+kernel_log_probability_cn_noise2 = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
     float* ref, float* alt, float* cn,
     float* afs, float* out,
@@ -504,7 +503,7 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
         out[tid * N + i] = log_probs[i] - logZ;
     }
 }
-'''
+"""
 
 
 # mat1: (nsite, k) mat2: (k, k)
@@ -524,7 +523,7 @@ extern "C" __global__ void log_matmul(float* mat1, float* mat2, float* out, int 
 """
 
 
-# # non-contiguous pointers: logmatmul 
+# # non-contiguous pointers: logmatmul
 # kernel_batch_log_matmul = r"""
 # extern "C" __global__ void batch_log_matmul(
 #     float** bmat1, float* mat2, float** bout, int batch, int n, int k)
@@ -535,7 +534,7 @@ extern "C" __global__ void log_matmul(float* mat1, float* mat2, float* out, int 
 #     int j = blockIdx.y * blockDim.y + threadIdx.y;
 #     if (i >= n || j >= k) return;
 
-#     float* mat1 = bmat1[z]; 
+#     float* mat1 = bmat1[z];
 #     float* out  = bout[z];
 
 #     float maxval = -1.0f/0.0f;
@@ -559,7 +558,7 @@ extern "C" __global__ void log_matmul(float* mat1, float* mat2, float* out, int 
 # """
 
 
-# non-contiguous pointers: logmatmul 
+# non-contiguous pointers: logmatmul
 kernel_batch_log_matmul = r"""
 extern "C" __global__ void batch_log_matmul(float** bmat1, float* mat2, float** bout, int m, int n, int k){
     int z = blockIdx.z;
@@ -581,7 +580,7 @@ extern "C" __global__ void batch_log_matmul(float** bmat1, float* mat2, float** 
 }
 """
 
-# non-contiguous pointers: logmatmul 
+# non-contiguous pointers: logmatmul
 kernel_batch_log_vecdot = r"""
 extern "C" __global__ void batch_log_vecdot(float** bmat1, float** bmat2, float* bout, int m, int n, int k){
     int z = blockIdx.z;
@@ -608,7 +607,7 @@ extern "C" __global__ void batch_log_vecdot(float** bmat1, float** bmat2, float*
 """
 
 
-# non-contiguous pointers: logmatmul 
+# non-contiguous pointers: logmatmul
 kernel_batch_log_3vecdot = r"""
 extern "C" __global__ void batch_log_3vecdot(float** bmat1, float** bmat2, float** bmat3, float* bout, int m, int n, int k){
     int z = blockIdx.z;
@@ -634,7 +633,6 @@ extern "C" __global__ void batch_log_3vecdot(float** bmat1, float** bmat2, float
     bout[z*n + i] = maxval + logf(sumexp);
 }
 """
-
 
 
 # non-contiguous pointers: logmatadd
@@ -674,34 +672,45 @@ extern "C" __global__ void batch_matadd_stride(float** bmat1, float** bmat2, flo
 """
 
 
-
-
 def compute_genotype_log_probs():
-    return cp.RawKernel(kernel_log_probability, 'compute_genotype_log_probs')
+    return cp.RawKernel(kernel_log_probability, "compute_genotype_log_probs")
+
 
 def compute_genotype_log_probs_cn_noise():
-    return cp.RawKernel(kernel_log_probability_cn_noise, 'compute_genotype_log_probs_cn_noise')
+    return cp.RawKernel(
+        kernel_log_probability_cn_noise, "compute_genotype_log_probs_cn_noise"
+    )
+
 
 def compute_genotype_log_probs_cn_noise_origin():
-    return cp.RawKernel(kernel_log_probability_cn_noise_original, 'compute_genotype_log_probs_cn_noise')
+    return cp.RawKernel(
+        kernel_log_probability_cn_noise_original, "compute_genotype_log_probs_cn_noise"
+    )
+
 
 def log_matmul_cuda():
-    return cp.RawKernel(kernel_log_matmul, 'log_matmul')
+    return cp.RawKernel(kernel_log_matmul, "log_matmul")
+
 
 def batch_log_matmul_cuda():
-    return cp.RawKernel(kernel_batch_log_matmul, 'batch_log_matmul')
+    return cp.RawKernel(kernel_batch_log_matmul, "batch_log_matmul")
+
 
 def batch_log_vecdot_cuda():
-    return cp.RawKernel(kernel_batch_log_vecdot, 'batch_log_vecdot')
+    return cp.RawKernel(kernel_batch_log_vecdot, "batch_log_vecdot")
+
 
 def batch_log_3vecdot_cuda():
-    return cp.RawKernel(kernel_batch_log_3vecdot, 'batch_log_3vecdot')
+    return cp.RawKernel(kernel_batch_log_3vecdot, "batch_log_3vecdot")
+
 
 def batch_matadd_cuda():
-    return cp.RawKernel(kernel_batch_matadd, 'batch_matadd')
+    return cp.RawKernel(kernel_batch_matadd, "batch_matadd")
+
 
 def batch_matadd_stride_cuda():
-    return cp.RawKernel(kernel_batch_matadd_stride, 'batch_matadd_stride')
+    return cp.RawKernel(kernel_batch_matadd_stride, "batch_matadd_stride")
+
 
 if __name__ == "__main__":
     # cp.random.seed(42)
@@ -712,38 +721,34 @@ if __name__ == "__main__":
     # # b = cp.array([[1e-3, 1e-3, 1-2e-3], [1e-3, 1e-3, 1-2e-3], [1e-3, 1e-3, 1-2e-3]], dtype=cp.float32)
     # # b = cp.array([])
 
-    # a = cp.asarray(a, dtype=cp.float32) 
+    # a = cp.asarray(a, dtype=cp.float32)
     # a = a / cp.sum(a, axis=-1, keepdims=True)
-    
+
     # b = cp.asarray(b, dtype=cp.float32)
     # # print(b)
     # b = b / cp.sum(b, axis=-1)
-    
 
     # loga = cp.log(a)
     # logb = cp.log(b)
 
     # k = 1
     # # ------------ test cuda -------------
-    
+
     # for i in range(k):
     #     c = cp.zeros([64, 3], dtype=cp.float32)
     #     # print(loga)
     #     log_matmul_cuda()((2, 1), (32, 32), (loga, logb, c, 64, 3))
     #     loga = c
-        
 
     # # ------------ standard --------------
     # for i in range(k):
     #     a = cp.matmul(b, a.T).T
 
-
-
     # print(c)
     # print(cp.log(a))
     # print(cp.isclose(c, cp.log(a)))
 
-        # -----------  test batch log matmul-----------------
+    # -----------  test batch log matmul-----------------
     h = 700
     w = 35
     n = 10
@@ -752,28 +757,26 @@ if __name__ == "__main__":
     #     outs.append(cp.zeros((h, w), dtype=cp.float32))
     mats = [cp.log(cp.random.rand(h, w).astype(cp.float32)) for _ in range(n)]
     mat2 = cp.log(cp.eye(w).astype(cp.float32))
-    outs  = [cp.zeros((h, w), dtype=cp.float32) for _ in range(n)]
+    outs = [cp.zeros((h, w), dtype=cp.float32) for _ in range(n)]
     bmat1 = cp.array([mat.data.ptr for mat in mats])
-    bout  = cp.array([mat.data.ptr for mat in outs])
+    bout = cp.array([mat.data.ptr for mat in outs])
     # mats = [cp.array([[-cp.inf, -cp.inf, 0.0]], dtype=cp.float32)]
     # # mats = [cp.array([[-cp.in, 2, 32]], dtype=cp.float32)]
     # outs = [cp.zeros([1,3], dtype=cp.float32)]
     # mat2 = cp.log(cp.eye(3, dtype=cp.float32))
     block_size = (16, 16)
-    grid_size = ((h + block_size[0] - 1) // block_size[0], 
-                    (w + block_size[1] - 1) // block_size[1],
-                    n)
+    grid_size = (
+        (h + block_size[0] - 1) // block_size[0],
+        (w + block_size[1] - 1) // block_size[1],
+        n,
+    )
     # print(mats[0])
     # print(mat2)
     # print(cp.exp(mats[0]) @ cp.exp(mat2).T)
-    batch_log_matmul_cuda()(grid_size, block_size, (bmat1, 
-                                                   mat2, 
-                                                   bout, 
-                                                   n, h, w))
+    batch_log_matmul_cuda()(grid_size, block_size, (bmat1, mat2, bout, n, h, w))
     for mat, out in zip(mats, outs):
         cpu_mm = cp.log(cp.matmul(cp.exp(mat), cp.exp(mat2).T))
         print(cp.allclose(cpu_mm, out, atol=1e-5))
-
 
     for mat, out in zip(mats, outs):
         mm = cp.log(cp.matmul(cp.exp(mat), cp.exp(mat2).T))
@@ -785,9 +788,6 @@ if __name__ == "__main__":
         # print(cp.abs(mm - out).sum())
         # break
 
-
-
-
     # ------------------ test batch log matmul2 --------------
     # Generate random matrices
     batch = 10
@@ -796,11 +796,11 @@ if __name__ == "__main__":
 
     mats1 = [cp.log(cp.random.rand(n, k).astype(cp.float32)) for _ in range(batch)]
     mat2 = cp.log(cp.eye(k).astype(cp.float32))
-    outs  = [cp.zeros((n, k), dtype=cp.float32) for _ in range(batch)]
+    outs = [cp.zeros((n, k), dtype=cp.float32) for _ in range(batch)]
 
     # Prepare pointers
     bmat1 = cp.array([mat.data.ptr for mat in mats1])
-    bout  = cp.array([mat.data.ptr for mat in outs])
+    bout = cp.array([mat.data.ptr for mat in outs])
 
     # Launch kernel
     block = (16, 16)
@@ -810,8 +810,6 @@ if __name__ == "__main__":
         cpu_mm = cp.log(cp.matmul(cp.exp(mat), cp.exp(mat2).T))
         print("allclose:", cp.allclose(cpu_mm, out, atol=1e-5))
         print("Max abs diff:", cp.abs(cpu_mm - out).max())
-       
-
 
     # -------------- test batch add ------------------
     # mat1s = []
@@ -821,16 +819,15 @@ if __name__ == "__main__":
     #     mat1s.append(cp.log(cp.random.rand(64, 3)).astype(cp.float32))
     #     mat2s.append(cp.log(cp.random.rand(64, 3)).astype(cp.float32))
     #     outs.append(cp.zeros([64, 3], dtype=cp.float32))
-    # batch_matadd_cuda()((5, 1, 10), (32, 32), (cp.array([v.data.ptr for v in mat1s]), 
+    # batch_matadd_cuda()((5, 1, 10), (32, 32), (cp.array([v.data.ptr for v in mat1s]),
     #                                             cp.array([v.data.ptr for v in mat2s]),
-    #                                             cp.array([v.data.ptr for v in outs]), 
+    #                                             cp.array([v.data.ptr for v in outs]),
     #                                             10, 64, 3))
     # for mat1, mat2, out in zip(mat1s, mat2s, outs):
     #     mm = mat1 + mat2
     #     print(out)
     #     print(cp.isclose(mm, out, rtol=1e-4))
     #     # break
-    
 
     ## --------- test matadd stride -------------
     # mat1s = []
@@ -846,12 +843,11 @@ if __name__ == "__main__":
     #     mat2s.append(bb[i])
     # # print(mat1s[0])
     # # print(mat2s[0])
-    # batch_matadd_stride_cuda()((1, 1, 2), (32, 32), (cp.array([v.data.ptr for v in mat1s]), 
+    # batch_matadd_stride_cuda()((1, 1, 2), (32, 32), (cp.array([v.data.ptr for v in mat1s]),
     #                                             cp.array([v.data.ptr for v in mat2s]),
     #                                             cp.array([v.data.ptr for v in mat1s]),
     #                                             2, 9, 3))
     # print(mat1s[0])
-    
 
     # ## ---------------- test vecdot ------------
     # mat1s = [cp.log(cp.random.rand(32, 10)).astype(cp.float32) for _ in range(10)]
@@ -859,10 +855,10 @@ if __name__ == "__main__":
     # out = cp.zeros([10, 32], dtype=cp.float32)
     # block_size = (32, 1)
     # grid_size = (10, 1, 10)
-    # batch_log_vecdot_cuda()(grid_size, block_size, (cp.array([v.data.ptr for v in mat1s]), 
+    # batch_log_vecdot_cuda()(grid_size, block_size, (cp.array([v.data.ptr for v in mat1s]),
     #                                                 cp.array([v.data.ptr for v in mat2s]),
-    #                                                 out, 
-    #                                                 10, 
+    #                                                 out,
+    #                                                 10,
     #                                                 32,
     #                                                 10))
     # print(out[0])
@@ -873,5 +869,3 @@ if __name__ == "__main__":
     #     res = cp.log((mat1 * mat2).sum(axis=-1))
     #     print(res)
     #     break
-
-

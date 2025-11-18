@@ -43,9 +43,10 @@ def infer_copy_number_tree(copy_numbers):
     nj_tree = constructor.nj(distance_matrix)
     for clade in nj_tree.get_nonterminals():
         clade.name = None
-    newick_string = nj_tree.format('newick')
+    newick_string = nj_tree.format("newick")
     import re
-    newick = re.sub(r':[^,);]+', '', newick_string)
+
+    newick = re.sub(r":[^,);]+", "", newick_string)
     return newick
 
 
@@ -79,6 +80,7 @@ def cluster_and_average_copy_numbers(copy_numbers, k=8):
 
     # Transpose back to original shape (n_sites x n_cells)
     return averaged_copy_numbers.T
+
 
 if __name__ == "__main__":
     cnum = np.random.randint(low=1, high=4, size=(100, 50))
