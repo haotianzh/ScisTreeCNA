@@ -1,0 +1,10 @@
+dice_temp/
+dice_temp/*
+.vscode/
+.vscode/*
+cellphy*
+dice*
+test*.py
+
+**/__pycache__
+tmp_tree*
