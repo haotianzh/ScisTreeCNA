@@ -116,10 +116,11 @@ def get_phred_likelihood(a, b, c, ml_gt):
 
 def infer_cellphy_tree(
     reads,
-    executable="/home/haz19024/softwares/cellphy/cellphy.sh",
+    executable,
     tempfile="cellphy_tmp",
     cell_names=None,
 ):
+    assert os.path.exists(executable), "CellPhy not found."
     n_sites = reads.shape[0]
     n_cells = reads.shape[1]
     ref_cnts = reads[:, :, 0]

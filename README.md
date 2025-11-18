@@ -15,10 +15,10 @@ ScisTreeCNA relies on **NVIDIA CUDA GPUs** to achieve high performance. CPU-only
 
 ## Installation
 
-### 1. Install [CuPy](https://cupy.dev/)
+### 1. Install [CuPy](https://cupy.dev/) with 
 
 ScisTreeCNA uses **CuPy** for GPU computation. The recommended way to install CuPy together with CUDA libraries is via **conda**:
 
 ```bash
 # Example: install CuPy with CUDA 12.x support
-conda install -c conda-forge cupy cuda-toolkit
+conda install -c conda-forge cupy 

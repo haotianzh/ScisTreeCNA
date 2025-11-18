@@ -4,12 +4,15 @@ from phytreeviz import TreeViz  # for tree visuaization
 import numpy as np
 import cupy as cp
 from time import time
+from rich.console import Console
+from rich import print
 from . import util, external
 from .cn_estimate import *
 from .topological_sort import *
 from .transition_solver import *
 
 
+console = Console()
 warnings.filterwarnings("ignore")  # opts on log 0 is normal, a -inf is always expected.
 cp.set_printoptions(suppress=True)
 
@@ -496,7 +499,6 @@ class ScisTreeCNA:
             if switch:
                 lc1, lc2 = tree[node].get_children()[0].get_children()
                 rc1, rc2 = tree[node].get_children()[1].get_children()
-                print(lc1, lc2, rc1, rc2)
 
     def nni_search_sinlge_round_batch(
         self, probs, tree, tree_batch_size=64, node_batch_size=32
@@ -568,7 +570,6 @@ class ScisTreeCNA:
         best_likelihood, indicies = self.marginal_evaluate_dp(probs, best_tree.copy())
         loader = TreeBatchLoader(candidates, batch_size=tree_batch_size)
         # print('tree len', len(loader))
-        # pbar = tqdm(total=len(candidates))
         num_tree_evaulated = 0
         for bi, trees in enumerate(loader()):
             # print(f'#batch: {bi}')
@@ -650,7 +651,7 @@ class ScisTreeCNA:
         # local search:
         best_tree = tree.copy()
         best_likelihood = self.marginal_evaluate_dp(probs, best_tree)
-        for t in tqdm(candidates):
+        for t in candidates:
             # print('spr', popgen.utils.spr_distance(tree, t))
             likelihood = self.marginal_evaluate_dp(probs, t.copy())
             if likelihood > best_likelihood:
@@ -659,11 +660,20 @@ class ScisTreeCNA:
         return best_tree, best_likelihood
 
     def local_search_batch(
-        self, probs, tree, ground_truth=None, tree_batch_size=64, node_batch_size=32
+        self,
+        probs,
+        tree,
+        ground_truth=None,
+        tree_batch_size=64,
+        node_batch_size=32,
+        verbose=True,
     ):
         # tree = self.initial_tree(probs)
         L = -np.inf
         iters = 0
+        if verbose:
+            status = console.status("[bold green]NNI Searching")
+            status.start()
         while True:
             better_tree, likelihood = self.nni_search_sinlge_round_batch(
                 probs,
@@ -672,17 +682,23 @@ class ScisTreeCNA:
                 node_batch_size=node_batch_size,
             )
             if likelihood <= L:
-                print("Converge, Stop!")
+                if verbose:
+                    console.log(
+                        f"[bold red]Local search complete. Best Likelihood: {L}"
+                    )
                 break
             else:
                 L = likelihood
                 tree = better_tree
-                print(f"[Iteration {iters}] Best likelihood: {L:.4f}", end=" ")
-                if ground_truth:
-                    print(
-                        f"Tree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
+                str_log = f"[Iteration {iters}]\tLikelihood: {L:.4f}"
+                if ground_truth is not None and isinstance(ground_truth, util.BaseTree):
+                    str_log += (
+                        f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
                     )
+                if verbose:
+                    console.log(str_log)
                 iters += 1
+
         return tree, L
 
     def local_search(self, probs, tree, ground_truth=None):
@@ -916,6 +932,7 @@ def infer(
     tree_batch_size=64,
     node_batch_size=64,
     true_tree=None,
+    verbose=True,
 ):
     assert cn_min > 0, "cn_min should be greater than 0."
     n_sites, n_cells, _ = reads.shape
@@ -926,10 +943,24 @@ def infer(
     start_tree = util.relabel(
         start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
     )
-    true_tree = util.relabel(
-        true_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
-    )
+    if true_tree is not None and isinstance(true_tree, util.BaseTree):
+        true_tree = util.relabel(
+            true_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
+        )
     cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
+    if verbose:
+        console.rule("[bold red]ScisTreeCNA")
+        console.print(f"#Cell: {n_cells} #Site: {n_sites}", justify="center")
+        console.print(
+            f"CN_MIN: {cn_min} CN_MAX: {cn_max} ADO: {ado} SEQ_ERR: {seq_error} CN_NOISE: {cn_noise}",
+            justify="center",
+        )
+        console.print(
+            f"TREE_BATCH_SIZE: {tree_batch_size} NODE_BATCH_SIZE: {node_batch_size}",
+            justify="center",
+        )
+        console.rule("[bold red]Local Search")
+
     s = ScisTreeCNA(
         CN_MAX=cn_max,
         CN_MIN=cn_min,
@@ -947,10 +978,13 @@ def infer(
         tree_batch_size=tree_batch_size,
         node_batch_size=node_batch_size,
         ground_truth=true_tree,
+        verbose=verbose,
     )
     ml2, indices = s.marginal_evaluate_dp(probs, tree)
     geno = construct_genotype(tree, indices)
     tree = util.relabel(
         tree, name_map={str(i): name for i, name in enumerate(cell_names)}
     )
+
+    console.rule()
     return tree, geno

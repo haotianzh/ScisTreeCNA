@@ -30,13 +30,13 @@ def write_to_dice(reads, output_file="dice_input.tsv"):
 
 def infer_dice_tree(
     reads,
-    executable="/home/haz19024/miniconda3/envs/scistree2/bin/dice",
+    executable,
     tempfile="dice_tmp",
     cell_names=None,
 ):
+    assert os.path.exists(executable), "DICE not found."
     n_cells = reads.shape[1]
     write_to_dice(reads)
-    PATH = "/home/haz19024/miniconda3/envs/scistree2/bin/"
     os.system(f"{executable} -i dice_input.tsv -t -o {tempfile} -m balME")
     with open(f"{tempfile}/standard_root_balME_tree.nwk", "r") as f:
         dice_nwk = f.readline().strip()

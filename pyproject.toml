@@ -23,7 +23,8 @@ dependencies = [
     "phytreeviz",
     "scikit-learn",
     "scipy",
-    "biopython"
+    "biopython",
+    "rich"
 ]
 
 [project.optional-dependencies]
