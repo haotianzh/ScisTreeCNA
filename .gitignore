@@ -4,7 +4,7 @@ dice_tmp/*
 .vscode/*
 cellphy_tmp*
 dice_input*
-test*
+test*.py
 **/__pycache__
 tmp_tree*
 scistreecna.egg-info/**
