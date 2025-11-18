@@ -7,3 +7,8 @@ dice_input*
 test*.py
 **/__pycache__
 tmp_tree*
+scistreecna.egg-info/
+dist/
+build/
+.eggs/
+*.egg
