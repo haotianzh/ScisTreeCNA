@@ -2,7 +2,6 @@ import numpy as np
 import cupy as cp
 from cupyx.scipy.special import logsumexp, log_softmax
 from time import time
-import pandas as pd
 from . import util_tree as util
 from ..base import *
 
@@ -304,42 +303,42 @@ def to_numpy(x):
         return {k: x[k].get() for k in x}
 
 
-def read_vcf(vcf):
-    order = ["A", "C", "G", "T"]
-    # order: A, C, G, T
-    data = []
-    tg = []
-    count = 0
-    with open(vcf, "r") as f:
-        for line in f.readlines():
-            data_site = []
-            tg_site = []
-            if line.startswith("##"):
-                continue
-            if line.startswith("#"):
-                line = line.strip().split()
-                cell_names = line[9:-1]
-                continue
-            line = line.strip().split()
-            ref = line[3]
-            for cell in line[9:-1]:
-                info = cell.split(":")
-                true_gt = info[-1]
-                cn = 1 if "-" in true_gt else 2
-                ml_gt = info[0]
-                reads = [int(_) for _ in info[2].split(",")]
-                ref_count = reads[order.index(ref)]
-                alt_count = sum(reads) - ref_count
-                # if '-' in true_gt:
-                #     print(count, (ref_count, alt_count, cn))
-                data_site.append((ref_count, alt_count, cn))
-                tg_site.append(true_gt)
-            data.append(data_site)
-            tg.append(tg_site)
-            count += 1
-    return np.array(data, dtype=np.object_), pd.DataFrame(
-        index=cell_names, data=np.array(tg, dtype=np.object_).T
-    )
+# def read_vcf(vcf):
+#     order = ["A", "C", "G", "T"]
+#     # order: A, C, G, T
+#     data = []
+#     tg = []
+#     count = 0
+#     with open(vcf, "r") as f:
+#         for line in f.readlines():
+#             data_site = []
+#             tg_site = []
+#             if line.startswith("##"):
+#                 continue
+#             if line.startswith("#"):
+#                 line = line.strip().split()
+#                 cell_names = line[9:-1]
+#                 continue
+#             line = line.strip().split()
+#             ref = line[3]
+#             for cell in line[9:-1]:
+#                 info = cell.split(":")
+#                 true_gt = info[-1]
+#                 cn = 1 if "-" in true_gt else 2
+#                 ml_gt = info[0]
+#                 reads = [int(_) for _ in info[2].split(",")]
+#                 ref_count = reads[order.index(ref)]
+#                 alt_count = sum(reads) - ref_count
+#                 # if '-' in true_gt:
+#                 #     print(count, (ref_count, alt_count, cn))
+#                 data_site.append((ref_count, alt_count, cn))
+#                 tg_site.append(true_gt)
+#             data.append(data_site)
+#             tg.append(tg_site)
+#             count += 1
+#     return np.array(data, dtype=np.object_), pd.DataFrame(
+#         index=cell_names, data=np.array(tg, dtype=np.object_).T
+#     )
 
 
 def pairwise_distance_matrix(probs):
@@ -355,31 +354,33 @@ def ggeno_to_bgeno(genotype):
     mask = (genotype[:, :, 0] == 0) & (genotype[:, :, 1] == 0)
     bgeno[bgeno > 1] = 1
     bgeno[mask] = -1
+    bgeno = bgeno.astype(int)
     return bgeno
 
 
-def plot_copy_number(reads, cell_id=0):
-    import matplotlib.pyplot as plt
+def random_reads(n_leaves=10, n_sites=1):
+    reads = []
+    for site in range(n_sites):
+        read = []
+        for leave in range(n_leaves):
+            ref = np.random.randint(low=0, high=5)
+            alt = np.random.randint(low=0, high=5)
+            cn = np.random.randint(low=0, high=3)
+            read.append((ref, alt, cn))
+        reads.append(read)
+    return np.array(reads)
 
-    nums = reads[:, cell_id, 2]
-    plt.step(np.arange(len(nums)), nums)
-    plt.savefig("cn_plot.png")
+
+# def plot_copy_number(reads, cell_id=0):
+#     import matplotlib.pyplot as plt
+#     nums = reads[:, cell_id, 2]
+#     plt.step(np.arange(len(nums)), nums)
+#     plt.savefig("cn_plot.png")
 
 
-## -------------------- test code ----------------------------
-if __name__ == "__main__":
-    disMatrix = [
-        [0, 23, 27, 20],
-        [23, 0, 30, 28],
-        [27, 30, 0, 30],
-        [20, 28, 30, 0],
-    ]
-    probs = cp.load("./probs.cpy.npy")
-    print(probs)
-    disMatrix = pairwise_distance_matrix(probs).get()
-    print(disMatrix)
-    tree = neighbor_joining_np(disMatrix)
-    print(tree)
+def get_default_cell_names(n_cells):
+    return [f"c{i}" for i in range(n_cells)]
 
-    # a = neighbor_joining(disMatrix)
-    # print(a)
+
+def get_default_site_names(n_sites):
+    return [f"s{i}" for i in range(n_sites)]

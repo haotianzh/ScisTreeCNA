@@ -3,9 +3,10 @@ from Bio import Phylo
 import numpy as np
 from io import StringIO
 from sklearn.cluster import KMeans
+from .. import util
 
 
-def infer_copy_number_tree(copy_numbers):
+def infer_copy_number_tree(copy_numbers, cell_names=None):
     """
     Constructs a Neighbor-Joining (NJ) tree using the copy number data from reads[:, :, 2]
     and returns the tree in Newick format with only leaf labels (no branch lengths or internal node labels).
@@ -47,7 +48,13 @@ def infer_copy_number_tree(copy_numbers):
     import re
 
     newick = re.sub(r":[^,);]+", "", newick_string)
-    return newick
+    if cell_names is None:
+        cell_names = util.get_default_cell_names(n_cells)
+    tree = util.relabel(
+        util.from_newick(newick),
+        name_map={str(i): name for i, name in enumerate(cell_names)},
+    )
+    return tree
 
 
 def cluster_and_average_copy_numbers(copy_numbers, k=8):
@@ -80,11 +87,3 @@ def cluster_and_average_copy_numbers(copy_numbers, k=8):
 
     # Transpose back to original shape (n_sites x n_cells)
     return averaged_copy_numbers.T
-
-
-if __name__ == "__main__":
-    cnum = np.random.randint(low=1, high=4, size=(100, 50))
-    k = 8
-    averaged_copy_numbers = cluster_and_average_copy_numbers(cnum, k=k)
-    print("Averaged Copy Numbers:")
-    print(averaged_copy_numbers)

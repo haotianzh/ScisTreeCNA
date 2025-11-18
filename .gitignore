@@ -4,11 +4,12 @@ dice_tmp/*
 .vscode/*
 cellphy_tmp*
 dice_input*
-test*.py
+test*
 **/__pycache__
 tmp_tree*
-scistreecna.egg-info/
+scistreecna.egg-info/**
 dist/
-build/
+build/**/
 .eggs/
 *.egg
+scistreecna.egg-info

@@ -64,26 +64,23 @@ def read_vcf(vcf_filepath, key="AD"):
                 if ad_index < len(gt_fields):
                     ad_value_str = gt_fields[ad_index]
                     if ad_value_str != "." and "," in ad_value_str:
-                        try:
-                            ad_parts = ad_value_str.split(",")
-                            ref_reads = int(ad_parts[0])
-                            alt_reads = int(ad_parts[1])
-                            # copy_number = int(ad_parts[2])
-                        except (ValueError, IndexError):
-                            print("valuesss")
-                            pass
-                site_ad_data.append((ref_reads, alt_reads))
+                        ad_parts = ad_value_str.split(",")
+                        ref_reads = ad_parts[0]
+                        alt_reads = ad_parts[1]
+                        copy_number = ad_parts[2]
+                        ref_cnt, alt_cnt, copy_num = process_missing_values(ref_reads, alt_reads, copy_number)
+                site_ad_data.append((ref_cnt, alt_cnt, copy_num))
             ad_matrix.append(site_ad_data)
     return np.array(ad_matrix), sample_names, site_names
 
 
 def convert_2d_string_array_to_3d(input_2d_array):
     """
-    Converts a 2D array (list of lists) of strings formatted as 'x|y'
+    Converts a 2D array (list of lists) of strings formatted as 'ref_counts|alt_counts|copy_number'
     back into a 3D NumPy array of shape (rows, cols, 2).
 
     Args:
-        input_2d_array (list): A 2D list of strings, where each string is 'x|y'.
+        input_2d_array (list): A 2D list of strings, where each string is 'ref_counts|alt_counts|copy_number'.
 
     Returns:
         np.ndarray: A 3D NumPy array with the last dimension being of size 2.
@@ -96,26 +93,18 @@ def convert_2d_string_array_to_3d(input_2d_array):
     for i in range(num_rows):
         for j in range(num_cols):
             parts = input_2d_array[i][j].split("|")
-            if len(parts) == 2:
-                try:
-                    x_val = int(parts[0])
-                    y_val = int(parts[1])
-                    z_val = int(parts[2])
-                    result_3d_array[i, j] = [x_val, y_val, z_val]
-                except ValueError:
-                    print(
-                        f"Warning: Could not convert '{input_2d_array[i][j]}' to integers. Storing as original string parts."
-                    )
-                    result_3d_array[i, j] = parts
+            if len(parts) == 3:
+                x_val = parts[0]
+                y_val = parts[1]
+                z_val = parts[2]
+                ref_cnt, alt_cnt, copy_num = process_missing_values(x_val, y_val, z_val)
+                result_3d_array[i, j] = [ref_cnt, alt_cnt, copy_num]
             else:
-                print(
-                    f"Warning: Unexpected format for string '{input_2d_array[i][j]}'. Expected 'x|y'."
-                )
-                result_3d_array[i, j] = [None, None]
+                raise Exception("Invalid format in .csv file.")
     return result_3d_array
 
 
-def read_csv(csv_filepath, reads=False):
+def read_csv(csv_filepath, reads=True):
     """
     Reads a CSV file.
     Args:
@@ -140,6 +129,14 @@ def read_csv(csv_filepath, reads=False):
         sample_names,
         site_names,
     )
+
+
+def process_missing_values(ref_cnt, alt_cnt, copy_num):
+    if ref_cnt == '.' and alt_cnt == '.':   # reads missed
+        ref_cnt, alt_cnt = 0, 0
+    if copy_num == '.': # cn missed
+        copy_num = -1
+    return int(ref_cnt), int(alt_cnt), int(copy_num)
 
 
 if __name__ == "__main__":

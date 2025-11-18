@@ -5,7 +5,6 @@ description: utils for trees
 """
 
 import warnings
-import time
 import random
 import numpy as np
 import os

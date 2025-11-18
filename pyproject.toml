@@ -23,7 +23,6 @@ dependencies = [
     "phytreeviz",
     "scikit-learn",
     "scipy",
-    "tqdm",
     "biopython"
 ]
 

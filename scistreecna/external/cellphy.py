@@ -117,8 +117,11 @@ def get_phred_likelihood(a, b, c, ml_gt):
 def infer_cellphy_tree(
     reads,
     executable="/home/haz19024/softwares/cellphy/cellphy.sh",
-    tempfile="cellphy_temp",
+    tempfile="cellphy_tmp",
+    cell_names=None,
 ):
+    n_sites = reads.shape[0]
+    n_cells = reads.shape[1]
     ref_cnts = reads[:, :, 0]
     alt_cnts = reads[:, :, 1]
     a, b, c = phred_likelihood_with_ado_seqerr_gt(ref_cnts, alt_cnts)
@@ -131,21 +134,13 @@ def infer_cellphy_tree(
     with open(f"cellphy_tmp.vcf.raxml.bestTree") as f:
         tree = f.readline().strip()
     tree = util.from_newick(tree)
-    # tree = popgen.utils.relabel(tree, offset=-1)
-    return tree
-
-
-def random_reads(n_leaves=10, n_sites=1):
-    reads = []
-    for site in range(n_sites):
-        read = []
-        for leave in range(n_leaves):
-            ref = np.random.randint(low=0, high=5)
-            alt = np.random.randint(low=0, high=5)
-            read.append((ref, alt, 2))
-            # read.append((0, 5, 2))
-        reads.append(read)
-    return np.array(reads)
+    if cell_names is None:
+        cell_names = util.get_default_cell_names(n_cells)
+    tree = util.relabel(
+        tree, name_map={str(i): name for i, name in enumerate(cell_names)}
+    )
+    geno = get_cellphy_genotype("cellphy_tmp", n_sites=n_sites, n_cells=n_cells)
+    return tree, geno
 
 
 def read_cellphy_mutation_list(file):
@@ -175,14 +170,13 @@ def read_cellphy_mutation_tree(file):
     return util.from_newick(line)
 
 
-def get_cellphy_genotype(prefix, tg):
+def get_cellphy_genotype(prefix, n_cells, n_sites):
     raxml_tree = f"{prefix}.vcf.Mapped.raxml.mutationMapTree"
     raxml_list = f"{prefix}.vcf.Mapped.raxml.mutationMapList"
     if not os.path.exists(raxml_tree) or not os.path.exists(raxml_list):
         print("error!")
         return None
-    num_snp, num_cell = tg.shape
-    genotype = np.zeros([num_snp, num_cell], dtype=int)
+    genotype = np.zeros([n_sites, n_cells], dtype=int)
     edges = read_cellphy_mutation_list(raxml_list)
     tree = read_cellphy_mutation_tree(raxml_tree)
     generator = util.TraversalGenerator(order="post")
@@ -195,17 +189,3 @@ def get_cellphy_genotype(prefix, tg):
             genotype[np.ix_(muts, leaves)] = 1 - genotype[np.ix_(muts, leaves)]
             # genotype[np.ix_(muts, leaves)] = 1
     return genotype
-
-
-if __name__ == "__main__":
-    reads = random_reads(10, 5)
-    ref_cnts = reads[:, :, 0]
-    alt_cnts = reads[:, :, 1]
-
-    ref_cnts = np.zeros([1, 10])
-    alt_cnts = np.zeros([1, 10])
-    a, b, c = phred_likelihood_with_ado_seqerr_gt(ref_cnts, alt_cnts, ado=0.5)
-    gt = get_ml_gt(ref_cnts, alt_cnts, ado=0.5)
-    print(a, b, c)
-    # res = get_phred_likelihood(a, b, c, gt)
-    # write_to_cellphy(res)

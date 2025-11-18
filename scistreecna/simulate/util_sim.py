@@ -1,4 +1,6 @@
 import numpy as np
+import pandas as pd
+import pickle
 from ..util import *
 
 
@@ -101,3 +103,31 @@ def random_mask_missing(reads, missing_prob):
     missing_mask = np.random.rand(*copy_numbers.shape) < missing_prob
     missing_matrix[:, :, 2][missing_mask] = -1
     return missing_matrix
+
+
+def transform_3d_to_2d_dataframe(data_3d: np.ndarray, separator: str = '|') -> pd.DataFrame:
+    def concat_elements_to_string(array_1d):
+        return separator.join(map(str, array_1d))
+    m, n, k = data_3d.shape
+    string_list_2d = [
+        [concat_elements_to_string(data_3d[i, j, :]) for j in range(n)] 
+        for i in range(m)
+    ]
+    string_array = np.array(string_list_2d, dtype=object)
+    df_2d = pd.DataFrame(string_array)
+    return df_2d
+
+
+def save_data(reads, tree, tg, output_prefix):
+    n_sites, n_cells, _ = reads.shape
+    site_names = [f's{i}' for i in range(n_sites)]
+    cell_names = [f'c{i}' for i in range(n_cells)]
+    df = transform_3d_to_2d_dataframe(reads)
+    df.index = site_names
+    df.columns = cell_names
+    tree = util.relabel(tree, name_map={str(i): f'c{i}' for i in range(n_cells)})
+    df.to_csv(f'{output_prefix}_reads.csv')
+    with open(f'{output_prefix}_tree.pkl', 'wb') as out:
+        pickle.dump(tree, out)
+    np.savetxt(f'{output_prefix}_tg.txt', tg, fmt='%d')
+

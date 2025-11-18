@@ -1,5 +1,5 @@
 """
-No Mutation
+Transition probabilities solver
 """
 
 import numpy as np
@@ -322,18 +322,3 @@ class TransitionProbability:
                             np.log(val) if self.log_transform else val
                         )
         return mat
-
-
-if __name__ == "__main__":
-
-    np.set_printoptions(suppress=True)
-    prob = TransitionProbability(
-        log_transform=True,
-        LAMBDA_C=1000,
-        LAMBDA_S=1,
-        LAMBDA_T=2 * 100 - 1,
-        CN_MAX=5,
-        CN_MIN=1,
-    )
-    x = prob.solve_no_mutation(verbose=False)
-    print(prob.format(np.exp(x)))

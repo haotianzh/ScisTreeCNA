@@ -32,6 +32,7 @@ def infer_dice_tree(
     reads,
     executable="/home/haz19024/miniconda3/envs/scistree2/bin/dice",
     tempfile="dice_tmp",
+    cell_names=None,
 ):
     n_cells = reads.shape[1]
     write_to_dice(reads)
@@ -42,4 +43,9 @@ def infer_dice_tree(
     dice_tree = util.from_newick(dice_nwk)
     dice_name_map = {f"leaf{i}": str(i) for i in range(n_cells)}
     dice_tree = util.relabel(dice_tree, name_map=dice_name_map)
-    return dice_tree
+    if cell_names is None:
+        cell_names = util.get_default_cell_names(n_cells)
+    tree = util.relabel(
+        dice_tree, name_map={str(i): name for i, name in enumerate(cell_names)}
+    )
+    return tree

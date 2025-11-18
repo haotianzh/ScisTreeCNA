@@ -1,13 +1,17 @@
+import warnings
 import scistree2 as s2
 from phytreeviz import TreeViz  # for tree visuaization
 import numpy as np
 import cupy as cp
-from tqdm import tqdm
 from time import time
 from . import util, external
 from .cn_estimate import *
 from .topological_sort import *
 from .transition_solver import *
+
+
+warnings.filterwarnings("ignore")  # opts on log 0 is normal, a -inf is always expected.
+cp.set_printoptions(suppress=True)
 
 
 # os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -902,6 +906,7 @@ def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None):
 
 def infer(
     reads,
+    cell_names=None,
     cn_min=1,
     cn_max=4,
     ado=0.1,
@@ -914,9 +919,16 @@ def infer(
 ):
     assert cn_min > 0, "cn_min should be greater than 0."
     n_sites, n_cells, _ = reads.shape
-    cp.set_printoptions(suppress=True)
-    start_tree, _ = external.infer_scistree2_tree(reads)
-    print(start_tree)
+    if cell_names is None:
+        cell_names = util.get_default_cell_names(n_cells)
+    start_tree, _ = external.infer_scistree2_tree(reads, cell_names=cell_names)
+    # need to convert back to numerical labels.
+    start_tree = util.relabel(
+        start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
+    )
+    true_tree = util.relabel(
+        true_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
+    )
     cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
     s = ScisTreeCNA(
         CN_MAX=cn_max,
@@ -926,7 +938,9 @@ def infer(
         LAMBDA_T=2 * n_cells - 1,
         verbose=False,
     )
-    probs = s.init_prob_leaves_gpu(reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af)
+    probs = s.init_prob_leaves_gpu(
+        reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af
+    )
     tree, likelihood = s.local_search_batch(
         probs,
         start_tree,
@@ -936,8 +950,7 @@ def infer(
     )
     ml2, indices = s.marginal_evaluate_dp(probs, tree)
     geno = construct_genotype(tree, indices)
+    tree = util.relabel(
+        tree, name_map={str(i): name for i, name in enumerate(cell_names)}
+    )
     return tree, geno
-
-
-if __name__ == "__main__":
-    pass
