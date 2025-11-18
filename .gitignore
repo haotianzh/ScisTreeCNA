@@ -1,10 +1,9 @@
-dice_temp/
-dice_temp/*
+dice_tmp/
+dice_tmp/*
 .vscode/
 .vscode/*
-cellphy*
-dice*
+cellphy_tmp*
+dice_input*
 test*.py
-
 **/__pycache__
 tmp_tree*
