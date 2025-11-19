@@ -1,24 +1,47 @@
-# ScisTreeCNA  
-**Accurate probabilistic reconstruction of cell lineage trees from SNVs and CNAs**
+# ScisTreeCNA
+**Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs**
 
-ScisTreeCNA is a GPU-accelerated Python package for reconstructing cell lineage trees (CLTs) from single-cell DNA sequencing data. It integrates both single-nucleotide variants (SNVs) and copy-number alterations (CNAs) under a unified probabilistic model, providing accurate and scalable inference for single-cell datasets with both SNVs and CNAs information.
+ScisTreeCNA is a powerful, **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both **Single-Nucleotide Variants (SNVs)** and **Copy-Number Alterations (CNAs)** within a unified probabilistic framework. This approach provides accurate and scalable inference, making it ideal for modern single-cell datasets containing both SNV and CNA information.
 
-ScisTreeCNA relies on **NVIDIA CUDA GPUs** to achieve high performance. CPU-only environments are **not supported**.
+***
+
+## ⚠️ Important Note: GPU Requirement
+
+ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve its high-performance, probabilistic reconstruction.
+
+**CPU-only environments are not supported.**
+
+***
+
+## ⚙️ System Requirements
+
+| Component | Requirement | Note |
+| :--- | :--- | :--- |
+| **Operating System** | Linux / Windows | |
+| **GPU** | NVIDIA CUDA GPU | Compute Capability **3.0** or higher is required. |
+| **Toolkit** | CUDA Runtime | Can be installed later. |
+***
 
 
+## 🚀 Installation
 
-## System requirements
-- OS: Linux / Windows
-- GPU: NVIDIA CUDA GPU with the Compute Capability 3.0 or larger.  
-- CUDA Toolkit
+### 1. Install CuPy and CUDA Runtime
 
-
-## Installation
-
-### 1. Install [CuPy](https://cupy.dev/) with 
-
-ScisTreeCNA uses **CuPy** for GPU computation. The recommended way to install CuPy together with CUDA libraries is via **conda**:
+ScisTreeCNA uses **CuPy** for its core GPU-accelerated computation. Installing CuPy via `conda-forge` is the easiest and most recommended way to get the necessary **CUDA runtime libraries**:
 
 ```bash
-# Example: install CuPy with CUDA 12.x support
-conda install -c conda-forge cupy 
+# Example: Install CuPy with CUDA 12.x Runtime.
+conda install -c conda-forge cupy
+```
+Note: Installing CuPy with `conda` automatically manages and installs the specific CUDA runtime libraries required for ScisTreeCNA to operate, often simplifying the dependency setup. Check more details at [CuPy official website](https://docs.cupy.dev/en/stable/install.html#installing-cupy-from-conda-forge).
+
+
+
+### 2. Install **ScisTreeCNA**
+
+Clone the repository and install the package using `pip`:
+```bash
+git clone https://github.com/haotianzh/ScisTreeCNA.git
+cd ScisTreeCNA
+pip install .
+```
