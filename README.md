@@ -90,7 +90,7 @@ import scistreecna as scna
 # load example data
 reads, cell_names, site_names = scna.util.read_csv('./examples/test_data_reads.csv')
 # run inference
-scistreecna_tree, scistreecna_geno = sc.infer(reads,
+scistreecna_tree, scistreecna_geno = scna.infer(reads,
                                               cell_names=cell_names,  # cell names
                                               ado=0.1,  # allelic dropout rate
                                               seq_error=0.01,   # sequencing error
