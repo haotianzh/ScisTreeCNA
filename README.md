@@ -19,29 +19,90 @@ ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve its high-perfo
 | :--- | :--- | :--- |
 | **Operating System** | Linux / Windows | |
 | **GPU** | NVIDIA CUDA GPU | Compute Capability **3.0** or higher is required. |
-| **Toolkit** | CUDA Runtime | Can be installed later. |
+| **Toolkit** | CUDA Runtime | These are essential for GPU operation and are typically installed alongside CuPy (see Installation). |
 ***
 
 
 ## 🚀 Installation
 
-### 1. Install CuPy and CUDA Runtime
+### Option 1: Recommended Installation (Using Conda to Manage CUDA)
 
-ScisTreeCNA uses **CuPy** for its core GPU-accelerated computation. Installing CuPy via `conda-forge` is the easiest and most recommended way to get the necessary **CUDA runtime libraries**:
+This method simplifies dependency management by allowing `conda` to install the matched CuPy and CUDA Runtime Libraries together.
 
-```bash
-# Example: Install CuPy with CUDA 12.x Runtime.
-conda install -c conda-forge cupy
+1.  **Install CuPy and CUDA Runtime**
+    ```bash
+    # Example: Install CuPy with CUDA 12.x Runtime
+    conda install -c conda-forge cupy 
+    ```
+
+    > **Note:** Installing CuPy with `conda` automatically manages and installs the specific **CUDA runtime libraries** required for ScisTreeCNA to operate, greatly simplifying the setup. Check for more details at the [CuPy official website](https://docs.cupy.dev/en/stable/install.html#installing-cupy-from-conda-forge).
+
+2.  **Install ScisTreeCNA**
+
+    Clone the repository and install the package using `pip`. Since CUDA dependencies are already handled by CuPy, use the standard local installation:
+
+    ```bash
+    git clone https://github.com/haotianzh/ScisTreeCNA.git
+    cd ScisTreeCNA
+    pip install .
+    ```
+
+---
+
+### Option 2: Installation with Pre-Installed CUDA Toolkit
+
+If you already have the **NVIDIA CUDA Toolkit** installed on your system and only need to install ScisTreeCNA and the CuPy version compatible with your existing setup, you can try:
+
+1.  **Clone ScisTreeCNA**
+    ```bash
+    git clone https://github.com/haotianzh/ScisTreeCNA.git
+    cd ScisTreeCNA
+    ```
+
+2.  **Install ScisTreeCNA with Specific CuPy Dependency**
+
+    Use the `pip install .[extra]` syntax, replacing the extra name with your CUDA major version to ensure compatibility:
+
+    * For CUDA 11.x:
+        ```bash 
+        pip install .[cuda11x] 
+        ```
+    * For CUDA 12.x:
+        ```bash 
+        pip install .[cuda12x] 
+        ```
+    * For CUDA 13.x:
+        ```bash 
+        pip install .[cuda13x] 
+        ```
+
+
+## 💡 Usage
+
+Once installed, you can use ScisTreeCNA from your Python environment. You will need to prepare your input files, see examples in folder `examples/`.
+
+### Running Inference
+
+This example demonstrates loading placeholder data paths and running the primary tree reconstruction function.
+
+```python
+import scistreecna as scna
+# load example data
+reads, cell_names, site_names = scna.util.read_csv('./examples/test_data_reads.csv')
+# run inference
+scistreecna_tree, scistreecna_geno = sc.infer(reads,
+                                              cell_names=cell_names,  # cell names
+                                              ado=0.1,  # allelic dropout rate
+                                              seq_error=0.01,   # sequencing error
+                                              cn_noise=0.05,    # copy number noise
+                                              cn_min=1, # minimum copy number (>=1) 
+                                              cn_max=5, # maximum copy number
+                                              tree_batch_size=128,  # number of trees evaluated together
+                                              node_batch_size=256,  # number of nodes evaluated together 
+                                              verbose=True)  # print logs
+print(scistreecna_tree) # print inferred tree
+print(scistreecna_geno) # print imputed binary genotype
 ```
-Note: Installing CuPy with `conda` automatically manages and installs the specific CUDA runtime libraries required for ScisTreeCNA to operate, often simplifying the dependency setup. Check more details at [CuPy official website](https://docs.cupy.dev/en/stable/install.html#installing-cupy-from-conda-forge).
 
+See more usages in our tutorials.
 
-
-### 2. Install **ScisTreeCNA**
-
-Clone the repository and install the package using `pip`:
-```bash
-git clone https://github.com/haotianzh/ScisTreeCNA.git
-cd ScisTreeCNA
-pip install .
-```
