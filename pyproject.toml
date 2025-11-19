@@ -39,7 +39,7 @@ cuda102 = ["cupy-cuda102"]
 
 
 [tool.setuptools]
-packages = ["scistreecna"]
+packages = ["scistreecna", "scistreecna.util", "scistreecna.base", "scistreecna.external", "scistreecna.simulate"]
 
 [tool.setuptools.dynamic]
 version = {attr = "scistreecna.__version__"}

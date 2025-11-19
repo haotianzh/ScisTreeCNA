@@ -1,5 +1,6 @@
 # ScisTreeCNA
-**Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs**
+<!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
+This repository contains the code for the paper **"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"** submitted to **RECOMB 2026** for review.
 
 ScisTreeCNA is a powerful, **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both **Single-Nucleotide Variants (SNVs)** and **Copy-Number Alterations (CNAs)** within a unified probabilistic framework. This approach provides accurate and scalable inference, making it ideal for modern single-cell datasets containing both SNV and CNA information.
 
@@ -29,6 +30,10 @@ ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve its high-perfo
 
 This method simplifies dependency management by allowing `conda` to install the matched CuPy and CUDA Runtime Libraries together.
 
+0. Create a fresh environment
+    ```bash
+    conda create -n scistreecna python=3.12
+    ```
 1.  **Install CuPy and CUDA Runtime**
     ```bash
     # Example: Install CuPy with CUDA 12.x Runtime

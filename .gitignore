@@ -13,3 +13,4 @@ build/**/
 .eggs/
 *.egg
 scistreecna.egg-info
+test_data*

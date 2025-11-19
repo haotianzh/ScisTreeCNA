@@ -39,11 +39,3 @@ class CNEstimator:
                         )
                     node.mins[c] = min(mins)
         return min(tree.root.mins.values())
-
-
-if __name__ == "__main__":
-    cns = [2, 2, 2, 3, 2, 1]
-    tree = util.from_newick("(((0,1),2),(3,(4,5)));")
-    estimator = CNEstimator(cns)
-
-    print(estimator(tree))
