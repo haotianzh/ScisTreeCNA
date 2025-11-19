@@ -33,6 +33,7 @@ This method simplifies dependency management by allowing `conda` to install the 
 0. Create a fresh environment
     ```bash
     conda create -n scistreecna python=3.12
+    conda activate scistreecna
     ```
 1.  **Install CuPy and CUDA Runtime**
     ```bash
