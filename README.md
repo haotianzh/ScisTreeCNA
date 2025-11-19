@@ -19,7 +19,7 @@ ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve its high-perfo
 | :--- | :--- | :--- |
 | **Operating System** | Linux / Windows | |
 | **GPU** | NVIDIA CUDA GPU | Compute Capability **3.0** or higher is required. |
-| **Toolkit** | CUDA Runtime | These are essential for GPU operation and are typically installed alongside CuPy (see Installation). |
+| **Toolkit** | CUDA Runtime | Essential for GPU operation and can typically be installed alongside CuPy (see Installation). |
 ***
 
 
