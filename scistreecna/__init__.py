@@ -6,7 +6,8 @@ from .scistreecna import (
 	construct_genotype,
 	estimate_copy_number,
 	find_copy_gain_loss_on_branch,
-	infer
+	infer,
+    console
 )
 from .topological_sort import batch_topological_sort, topological_sort
 from .transition_solver import TransitionProbability

@@ -1,4 +1,5 @@
 import warnings
+from contextlib import nullcontext
 import scistree2 as s2
 from phytreeviz import TreeViz  # for tree visuaization
 import numpy as np
@@ -12,7 +13,8 @@ from .topological_sort import *
 from .transition_solver import *
 
 
-console = Console()
+console = Console(force_jupyter=False, log_path=False, width=96)
+console.is_jupyter = False
 warnings.filterwarnings("ignore")  # opts on log 0 is normal, a -inf is always expected.
 cp.set_printoptions(suppress=True)
 
@@ -671,34 +673,32 @@ class ScisTreeCNA:
         # tree = self.initial_tree(probs)
         L = -np.inf
         iters = 0
-        if verbose:
-            status = console.status("[bold green]NNI Searching")
-            status.start()
-        while True:
-            better_tree, likelihood = self.nni_search_sinlge_round_batch(
-                probs,
-                tree,
-                tree_batch_size=tree_batch_size,
-                node_batch_size=node_batch_size,
-            )
-            if likelihood <= L:
-                if verbose:
-                    console.log(
-                        f"[bold red]Local search complete. Best Likelihood: {L}"
-                    )
-                break
-            else:
-                L = likelihood
-                tree = better_tree
-                str_log = f"[Iteration {iters}]\tLikelihood: {L:.4f}"
-                if ground_truth is not None and isinstance(ground_truth, util.BaseTree):
-                    str_log += (
-                        f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
-                    )
-                if verbose:
-                    console.log(str_log)
-                iters += 1
-
+        context = console.status("[bold green]NNI Searching") if verbose else nullcontext()
+        with context:
+            while True:
+                better_tree, likelihood = self.nni_search_sinlge_round_batch(
+                    probs,
+                    tree,
+                    tree_batch_size=tree_batch_size,
+                    node_batch_size=node_batch_size,
+                )
+                if likelihood <= L:
+                    if verbose:
+                        console.log(
+                            f"[bold red]Local search complete. Best Likelihood: {L}"
+                        )
+                    break
+                else:
+                    L = likelihood
+                    tree = better_tree
+                    str_log = f"[Iteration {iters}]\tLikelihood: {L:.4f}"
+                    if ground_truth is not None and isinstance(ground_truth, util.BaseTree):
+                        str_log += (
+                            f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
+                        )
+                    if verbose:
+                        console.log(str_log)
+                    iters += 1
         return tree, L
 
     def local_search(self, probs, tree, ground_truth=None):

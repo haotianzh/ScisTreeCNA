@@ -109,5 +109,5 @@ print(scistreecna_tree) # print inferred tree
 print(scistreecna_geno) # print imputed binary genotype
 ```
 
-See more usages in our tutorials.
+See more usages in our [tutorials](tutorials/scistreecna_basic.ipynb).
 
