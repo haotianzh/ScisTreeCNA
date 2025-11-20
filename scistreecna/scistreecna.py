@@ -691,7 +691,7 @@ class ScisTreeCNA:
                 else:
                     L = likelihood
                     tree = better_tree
-                    str_log = f"[Iteration {iters}]\tLikelihood: {L:.4f}"
+                    str_log = f"\r[Iteration {iters}]\tLikelihood: {L:.4f}"
                     if ground_truth is not None and isinstance(ground_truth, util.BaseTree):
                         str_log += (
                             f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
