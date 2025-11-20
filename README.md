@@ -1,4 +1,4 @@
-<h1 align="center"><img width=300; src="imgs/logo.png"></h1>
+<h1 align="center"><img width=300; src="https://raw.githubusercontent.com/haotianzh/ScisTreeCNA/refs/heads/main/imgs/logo.png"></h1>
 
 <p align="center">   
   <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="GitHub stars"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href=""><img src="https://img.shields.io/github/license/yufengwudcs/ScisTree2?color=%239b02fa"/>&thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a>
