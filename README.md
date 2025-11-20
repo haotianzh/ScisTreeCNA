@@ -87,7 +87,7 @@ If you already have the **NVIDIA CUDA Toolkit** installed on your system and onl
 
 Once installed, you can use ScisTreeCNA from your Python environment. You will need to prepare your input files, see examples in folder `examples/`.
 
-### Running Inference
+### Python Interface
 
 This example demonstrates loading placeholder data paths and running the primary tree reconstruction function.
 
@@ -109,6 +109,41 @@ scistreecna_tree, scistreecna_geno = scna.infer(reads,
 print(scistreecna_tree) # print inferred tree
 print(scistreecna_geno) # print imputed binary genotype
 ```
+More usage examples can be found in our [tutorials](tutorials/scistreecna_basic.ipynb).
 
-See more usages in our [tutorials](tutorials/scistreecna_basic.ipynb).
 
+
+### Command-Line Interface
+
+We also provide a CLI tool that accepts a `.csv` file as input and saves the inferred tree and imputed genotypes to a user-specified output location.
+
+To run inference on the example data using the CLI:
+
+```bash
+scistreecna --input ./examples/test_data_reads.csv --o test_output
+```
+Detailed usage:
+```
+usage: scistreecna [-h] --input INPUT [--output OUTPUT] [--cn-min CN_MIN] [--cn-max CN_MAX] [--ado ADO] [--seq-error SEQ_ERROR] [--af AF] [--cn-noise CN_NOISE] [--tree-batch TREE_BATCH] [--node-batch NODE_BATCH] [--verbose]
+
+CLI for ScisTreeCNA inference.
+
+options:
+  -h, --help            Show this help message and exit
+  --input INPUT, -i INPUT
+                        Path to input reads file (.npy format expected for 3D arrays)
+  --output OUTPUT, -o OUTPUT
+                        Prefix for output files. Saves as {prefix}_tree.txt and
+                        {prefix}_genotype.txt (default: 'output')
+  --cn-min CN_MIN       Minimum copy number
+  --cn-max CN_MAX       Maximum copy number
+  --ado ADO             Allelic dropout rate
+  --seq-error SEQ_ERROR Sequencing error rate
+  --af AF               Expected allele frequency
+  --cn-noise CN_NOISE   Copy-number noise level
+  --tree-batch TREE_BATCH
+                        Tree batch size
+  --node-batch NODE_BATCH
+                        Node batch size
+  --verbose             Enable verbose output
+```

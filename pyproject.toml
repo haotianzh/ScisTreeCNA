@@ -46,7 +46,7 @@ version = {attr = "scistreecna.__version__"}
 
 [project.scripts]
 # This creates a command "scistree" in your terminal
-scistree = "scistreecna.cli:main"
+scistreecna = "scistreecna.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/haotianzh/ScisTreeCNA"
