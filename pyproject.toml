@@ -44,6 +44,10 @@ packages = ["scistreecna", "scistreecna.util", "scistreecna.base", "scistreecna.
 [tool.setuptools.dynamic]
 version = {attr = "scistreecna.__version__"}
 
+[project.scripts]
+# This creates a command "scistree" in your terminal
+scistree = "scistreecna.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/haotianzh/ScisTreeCNA"
 "Bug Tracker" = "https://github.com/haotianzh/ScisTreeCNA/issues"
