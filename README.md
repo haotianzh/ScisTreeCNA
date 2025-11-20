@@ -1,7 +1,7 @@
 <h1 align="center"><img width=300; src="https://raw.githubusercontent.com/haotianzh/ScisTreeCNA/refs/heads/main/imgs/logo.png"></h1>
 
 <p align="center">   
-  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="GitHub stars"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href=""><img src="https://img.shields.io/github/license/yufengwudcs/ScisTree2?color=%239b02fa"/>&thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a>
+  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="GitHub stars"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href=""><img src="https://img.shields.io/github/license/yufengwudcs/ScisTree2?color=%239b02fa"/></a>&thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a>
 </p>
 
 <!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
@@ -13,11 +13,10 @@ ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing 
 
 ## ⚠️ Important Note: GPU Requirement
 
-ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve its high-performance, probabilistic reconstruction.
+ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve high-performance probabilistic reconstruction.  **CPU-only environments are not supported.**
 
-**CPU-only environments are not supported.**
+However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access:  [![colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing)
 
-***
 
 ## ⚙️ System Requirements
 
