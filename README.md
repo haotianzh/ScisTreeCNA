@@ -7,7 +7,7 @@
 <!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
 This repository contains the code for the paper **"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"** submitted to **RECOMB 2026** for review.
 
-ScisTreeCNA is a powerful, **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both **Single-Nucleotide Variants (SNVs)** and **Copy-Number Alterations (CNAs)** within a unified probabilistic framework. This approach provides accurate and scalable inference, making it ideal for modern single-cell datasets containing both SNV and CNA information.
+ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both Single-Nucleotide Variants (**SNVs**) and Copy-Number Alterations (**CNAs**) within a unified **probabilistic** framework. This approach provides accurate and scalable inference, making it ideal for modern single-cell datasets containing both SNV and CNA information.
 
 ***
 
