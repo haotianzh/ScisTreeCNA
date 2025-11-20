@@ -99,10 +99,10 @@ def generate_sample_clt(
     beta_binomial=False,
     random_seed=42,
     tmpfile="tmp_tree.nwk",
-    scism_path="/data/haotian/snvcnv/simulation_custom/scsim2",
+    executable="/data/haotian/snvcnv/simulation_custom/scsim2",
 ):
 
-    assert os.path.exists(scism_path), "scism_path not exists."
+    assert os.path.exists(executable), "scism not found."
     tree = util.relabel(tree, offset=1)
     cn = []
     reads_wild = []
@@ -111,7 +111,7 @@ def generate_sample_clt(
     with open(tmpfile, "w") as out:
         out.write(tree.output(branch_length_func=lambda x: x.branch))
     res = sp.run(
-        f"{scism_path} {tmpfile} {n_site} {n_vaiant_per_site} {error} {dropout} {doublet} {rate_cn_gain} {rate_cn_loss} {recurrent} 0 {dropout_cell_variance} {coverage_mean} {coverage_std} {random_seed} {int(beta_binomial)}",
+        f"{executable} {tmpfile} {n_site} {n_vaiant_per_site} {error} {dropout} {doublet} {rate_cn_gain} {rate_cn_loss} {recurrent} 0 {dropout_cell_variance} {coverage_mean} {coverage_std} {random_seed} {int(beta_binomial)}",
         shell=True,
         stdout=sp.PIPE,
         text=True,

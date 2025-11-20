@@ -669,11 +669,15 @@ class ScisTreeCNA:
         tree_batch_size=64,
         node_batch_size=32,
         verbose=True,
+        verbose_mode='all'
     ):
         # tree = self.initial_tree(probs)
+        assert verbose and verbose_mode in ['all', 'min'], "verbose mode should be set to either 'all' or 'min'."
         L = -np.inf
         iters = 0
-        context = console.status("[bold green]NNI Searching") if verbose else nullcontext()
+        context = (
+            console.status("[bold green]NNI Searching") if verbose else nullcontext()
+        )
         with context:
             while True:
                 better_tree, likelihood = self.nni_search_sinlge_round_batch(
@@ -692,12 +696,15 @@ class ScisTreeCNA:
                     L = likelihood
                     tree = better_tree
                     str_log = f"\r[Iteration {iters}]\tLikelihood: {L:.4f}"
-                    if ground_truth is not None and isinstance(ground_truth, util.BaseTree):
-                        str_log += (
-                            f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
-                        )
+                    if ground_truth is not None and isinstance(
+                        ground_truth, util.BaseTree
+                    ):
+                        str_log += f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
                     if verbose:
-                        console.log(str_log)
+                        if verbose_mode == 'all':
+                            console.log(str_log)
+                        else:
+                            context.update(f'[bold green]NNI Searching[/bold green]\t{str_log}')
                     iters += 1
         return tree, L
 
@@ -933,6 +940,7 @@ def infer(
     node_batch_size=64,
     true_tree=None,
     verbose=True,
+    verbose_mode='all'
 ):
     assert cn_min > 0, "cn_min should be greater than 0."
     n_sites, n_cells, _ = reads.shape
@@ -979,6 +987,7 @@ def infer(
         node_batch_size=node_batch_size,
         ground_truth=true_tree,
         verbose=verbose,
+        verbose_mode=verbose_mode
     )
     ml2, indices = s.marginal_evaluate_dp(probs, tree)
     geno = construct_genotype(tree, indices)
