@@ -1,15 +1,7 @@
 <h1 align="center">ScisTreeCNA</h1>
 
 <p align="center">   
-  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing">
-    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="GitHub stars"/>
-  </a>
-  <a href="https://github.com/haotianzh/ScisTreeCNA/issues">
-    <img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/>
-  </a>
-  <a href="https://github.com/username/repo">
-    <img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/>
-  </a>
+  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="GitHub stars"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a>
 </p>
 
 <!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
