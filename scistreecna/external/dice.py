@@ -36,8 +36,8 @@ def infer_dice_tree(
 ):
     assert os.path.exists(executable), "DICE not found."
     n_cells = reads.shape[1]
-    write_to_dice(reads)
-    os.system(f"{executable} -i dice_input.tsv -t -o {tempfile} -m balME")
+    write_to_dice(reads, output_file=f'{tempfile}_input.tsv')
+    os.system(f"{executable} -i {tempfile}_input.tsv -t -o {tempfile} -m balME")
     with open(f"{tempfile}/standard_root_balME_tree.nwk", "r") as f:
         dice_nwk = f.readline().strip()
     dice_tree = util.from_newick(dice_nwk)

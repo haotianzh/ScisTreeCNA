@@ -119,6 +119,8 @@ def infer_cellphy_tree(
     executable,
     tempfile="cellphy_tmp",
     cell_names=None,
+    num_threads=1,
+    mode='FAST'
 ):
     assert os.path.exists(executable), "CellPhy not found."
     n_sites = reads.shape[0]
@@ -130,7 +132,7 @@ def infer_cellphy_tree(
     gt = get_ml_gt(ref_cnts, alt_cnts)
     res = get_phred_likelihood(a, b, c, gt)
     write_to_cellphy(res)
-    os.system(f"{executable} FAST -t 30 -r {tempfile}.vcf > {tempfile}.log 2>&1")
+    os.system(f"{executable} {mode} -t {num_threads} -r {tempfile}.vcf > {tempfile}.log 2>&1")
     # os.system(f'{executable} SEARCH -t 30 -r cellphy_tmp.vcf > cellphy_tmp.log 2>&1')
     with open(f"cellphy_tmp.vcf.raxml.bestTree") as f:
         tree = f.readline().strip()
