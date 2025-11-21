@@ -88,12 +88,11 @@ If you already have the **NVIDIA CUDA Toolkit** installed on your system and onl
 
 
 ## 💡 Usage
-
-Once installed, you can use ScisTreeCNA from your Python environment. You will need to prepare your input files, see examples in folder `examples/`.
+Once installed, ScisTreeCNA can be used directly from your Python environment. To run the inference, you must prepare an input `.csv` file where **rows represent sites** and **columns represent cells**. Example input files are provided in the `examples/` directory for reference.
 
 ### Python Interface
 
-This example demonstrates loading placeholder data paths and running the primary tree reconstruction function.
+This example demonstrates loading example data and running the tree reconstruction function.
 
 ```python
 import scistreecna as scna
