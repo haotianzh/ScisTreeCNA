@@ -15,3 +15,4 @@ build/**/
 scistreecna.egg-info
 test_data*
 test_*.txt
+dice_tmp*

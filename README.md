@@ -1,19 +1,20 @@
-<h1 align="center"><img width=300; src="https://raw.githubusercontent.com/haotianzh/ScisTreeCNA/refs/heads/main/imgs/logo.png"></h1>
-
+<p align="center"><img width=300; src="https://raw.githubusercontent.com/haotianzh/ScisTreeCNA/refs/heads/main/imgs/logo.png"/></p>
 <p align="center">   
-  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="GitHub stars"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href=""><img src="https://img.shields.io/github/license/yufengwudcs/ScisTree2?color=%239b02fa"/></a>&thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a>
+  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="colab"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href=""><img src="https://img.shields.io/github/license/yufengwudcs/ScisTree2?color=%239b02fa"/></a>&thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a>
 </p>
 
 <!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
-This repository contains the code for the paper **"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"** submitted to **RECOMB 2026** for review.
+*This repository contains the code for the paper **"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"** submitted to **RECOMB 2026** for review.*
 
 ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both Single-Nucleotide Variants (**SNVs**) and Copy-Number Alterations (**CNAs**) within a unified **probabilistic** framework. This approach provides accurate and scalable inference, making it ideal for modern single-cell datasets containing both SNV and CNA information.
 
-***
+> **Note:** If you do not have copy-number data and only want to infer a cell lineage tree from SNVs, please refer to [ScisTree2](https://github.com/yufengwudcs/ScisTree2).
+
+---
 
 ## ⚠️ Important Note: GPU Requirement
 
-ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve high-performance probabilistic reconstruction.  **CPU-only environments are not supported.**
+ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve high-performance probabilistic reconstruction. CPU-only environments are **not** supported.
 
 However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access:  [![colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing)
 
@@ -22,9 +23,11 @@ However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access: 
 
 | Component | Requirement | Note |
 | :--- | :--- | :--- |
-| **Operating System** | Linux / Windows | |
-| **GPU** | NVIDIA CUDA GPU | Compute Capability **3.0** or higher is required. |
-| **Toolkit** | CUDA Runtime | Essential for GPU operation and can typically be installed alongside CuPy (see Installation). |
+| **Operating System** | Linux/macOS/Windows | |
+| **GPU** | NVIDIA CUDA GPU | Compute Capability 3.0 or higher is required. |
+| **Toolkit** | CUDA Runtime | Essential for GPU operation and can typically be installed alongside CuPy (see [Installation](#-installation)). |
+||Python & Pip | Python $\ge$ 3.8 |
+||Conda | Miniconda/Anaconda |
 ***
 
 
@@ -34,15 +37,15 @@ However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access: 
 
 This method simplifies dependency management by allowing `conda` to install the matched CuPy and CUDA Runtime Libraries together.
 
-0. Create a fresh environment
+0. You can either create a fresh environment or use an existing one.
     ```bash
     conda create -n scistreecna python=3.12
     conda activate scistreecna
     ```
-1.  **Install CuPy and CUDA Runtime**
+1.  **Install CuPy along with CUDA Runtime**
     ```bash
-    # Example: Install CuPy with CUDA 12.x Runtime
-    conda install -c conda-forge cupy 
+    # Example: Install CuPy with CUDA 12.8 Runtime
+    conda install -c conda-forge cupy cuda-version=12.8
     ```
 
     > **Note:** Installing CuPy with `conda` automatically manages and installs the specific **CUDA runtime libraries** required for ScisTreeCNA to operate, greatly simplifying the setup. Check for more details at the [CuPy official website](https://docs.cupy.dev/en/stable/install.html#installing-cupy-from-conda-forge).
@@ -61,7 +64,7 @@ This method simplifies dependency management by allowing `conda` to install the 
 
 ### Option 2: Installation with Pre-Installed CUDA Toolkit
 
-If you already have the **NVIDIA CUDA Toolkit** installed on your system and only need to install ScisTreeCNA and the CuPy version compatible with your existing setup, you can try:
+If you already have the **NVIDIA CUDA Toolkit** installed on your system (or your current conda env) and only need to install ScisTreeCNA and the CuPy that version compatible with your existing setup, you can try:
 
 1.  **Clone ScisTreeCNA**
     ```bash
@@ -123,7 +126,7 @@ We also provide a CLI tool that accepts a `.csv` file as input and saves the inf
 To run inference on the example data using the CLI:
 
 ```bash
-scistreecna --input ./examples/test_data_reads.csv --o test_output
+scistreecna --input ./examples/test_data_reads.csv --output test_output
 ```
 Detailed usage:
 ```

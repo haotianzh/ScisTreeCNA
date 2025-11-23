@@ -2,6 +2,7 @@ import os
 import subprocess as sp
 import numpy as np
 import scistree2
+import scsim
 from .. import util
 from . import util_sim
 
@@ -99,10 +100,11 @@ def generate_sample_clt(
     beta_binomial=False,
     random_seed=42,
     tmpfile="tmp_tree.nwk",
-    executable="/data/haotian/snvcnv/simulation_custom/scsim2",
+    executable=None,
 ):
-
-    assert os.path.exists(executable), "scism not found."
+    with scsim.get_executable_path(executable) as exec:
+        executable = str(exec)
+    assert os.path.exists(executable), "scsim not found."
     tree = util.relabel(tree, offset=1)
     cn = []
     reads_wild = []
@@ -159,17 +161,20 @@ def generate_sample_clone(
     beta_binomial=False,
     random_seed=42,
     tmpfile="tmp_tree.nwk",
-    scism_path="/data/haotian/snvcnv/simulation_custom/scsim2",
+    executable=None,
 ):
+    with scsim.get_executable_path(executable) as exec:
+        executable = str(exec)
+    assert os.path.exists(executable), "scsim not found."
     tree = util.relabel(tree, offset=1)
     cn = []
     reads_wild = []
     reads_mut = []
     tg = []
-    with open("tmp_tree.nwk", "w") as out:
+    with open(tmpfile, "w") as out:
         out.write(tree.output(branch_length_func=lambda x: x.branch))
     res = sp.run(
-        f"{scism_path} {tmpfile} {n_site} {n_vaiant_per_site} {error} {dropout} {doublet} {rate_cn_gain} {rate_cn_loss} {recurrent} 0 {dropout_cell_variance} {coverage_mean} {coverage_std} {random_seed} {int(beta_binomial)}",
+        f"{executable} {tmpfile} {n_site} {n_vaiant_per_site} {error} {dropout} {doublet} {rate_cn_gain} {rate_cn_loss} {recurrent} 0 {dropout_cell_variance} {coverage_mean} {coverage_std} {random_seed} {int(beta_binomial)}",
         shell=True,
         stdout=sp.PIPE,
         text=True,

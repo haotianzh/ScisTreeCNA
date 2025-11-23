@@ -15,11 +15,13 @@ authors = [
 ]
 keywords = ["cell lineage tree", "fast inference", "copy number alteration", "single-cell sequencing", "SNV", "CNA"]
 
+# need g++ to compile some dependencies.
 dependencies = [
     "numpy",
     "pandas",
     "pptree",
     "scistree2",
+    "scsim",
     "phytreeviz",
     "scikit-learn",
     "scipy",
