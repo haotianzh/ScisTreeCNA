@@ -28,6 +28,8 @@ However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access: 
 | **Toolkit** | CUDA Runtime | Essential for GPU operation and can typically be installed alongside CuPy (see [Installation](#-installation)). |
 ||Python & Pip | Python $\ge$ 3.8 |
 ||Conda | Miniconda/Anaconda |
+
+**We have successfully tested it on Linux, macOS, and Windows.*
 ***
 
 
