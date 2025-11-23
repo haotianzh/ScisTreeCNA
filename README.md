@@ -158,7 +158,7 @@ options:
 
 
 ## Simulator
-The accompanying simulator, **scsim**, for generating reads with copy-number gains and losses is available [here](  [https://github.com/haotianzh/scsim](https://github.com/haotianzh/scsim)).
+The accompanying simulator, **scsim**, for generating reads with copy-number gains and losses is available [here](https://github.com/haotianzh/scsim).
 
 
 ## Contact
