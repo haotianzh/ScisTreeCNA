@@ -4,11 +4,11 @@
 </p>
 
 <!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
-*This repository contains the code for the paper **"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"** submitted to **RECOMB 2026** for review.*
+*This repository contains the code for the paper **"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"** submitted for publication.*
 
 ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both Single-Nucleotide Variants (**SNVs**) and Copy-Number Alterations (**CNAs**) within a unified **probabilistic** framework. This approach provides accurate and scalable inference, making it ideal for modern single-cell datasets containing both SNV and CNA information.
 
-> **Note:** If you do not have copy-number data and only want to infer a cell lineage tree from SNVs, please refer to [ScisTree2](https://github.com/yufengwudcs/ScisTree2).
+> **Note:** If you do not have copy-number data and only want to infer a cell lineage tree from SNVs only, please use [ScisTree2](https://github.com/yufengwudcs/ScisTree2).
 
 ---
 
@@ -16,7 +16,7 @@ ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing 
 
 ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve high-performance probabilistic reconstruction. CPU-only environments are **not** supported.
 
-However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access:  [![colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing)
+However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access:  [![colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing).  To get started with colab, first make your own copy of the notebook and then you can modify your copy to try to use new data.
 
 
 ## ⚙️ System Requirements
