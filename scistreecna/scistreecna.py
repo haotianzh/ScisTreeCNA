@@ -737,10 +737,12 @@ class ScisTreeCNA:
         xp = cp if use_gpu else np
         if not use_gpu:
             probs = cp.asnumpy(probs)  # copy to cpu anyway
+            self.tran_prob_mutation = cp.asnumpy(self.tran_prob_mutation)
+            self.tran_prob_mutation_free = cp.asnumpy(self.tran_prob_mutation_free)
         # nsite, ncell = len(reads), len(reads[0])
         tree = tree.copy()
         ncell, nsite, _ = probs.shape
-        tran_prob_mut_broadcast = cp.tile(self.tran_prob_mutation, (nsite, 1)).reshape(
+        tran_prob_mut_broadcast = xp.tile(self.tran_prob_mutation, (nsite, 1)).reshape(
             nsite, probs.shape[-1], -1
         )
         tran_prob_mut_free_broadcast = xp.tile(
@@ -776,10 +778,18 @@ class ScisTreeCNA:
                 if return_trees:
                     for tnode in self.traversor(t1):
                         if tnode.is_root():
-                            tnode.state = t.root.state.get()
-                            tnode.arg = util.to_numpy(t.root.arg)
+                            tnode.state = (
+                                t.root.state.get() if use_gpu else t.root.state
+                            )
+                            tnode.arg = (
+                                util.to_numpy(t.root.arg) if use_gpu else t.root.arg
+                            )
                         elif not tnode.is_leaf():
-                            tnode.arg = util.to_numpy(t[tnode.name].arg)
+                            tnode.arg = (
+                                util.to_numpy(t[tnode.name].arg)
+                                if use_gpu
+                                else t[tnode.name].arg
+                            )
                             # print(tnode.arg)
                     trees.append(t1)
                 log_likelihoods.append(t.root.state[:, self.index_gt(0, 2)])
@@ -829,10 +839,14 @@ class ScisTreeCNA:
             if return_trees:
                 for tnode in self.traversor(t1):
                     if tnode.is_root():
-                        tnode.state = t.root.state.get()
-                        tnode.arg = util.to_numpy(t.root.arg)
+                        tnode.state = t.root.state.get() if use_gpu else t.root.state
+                        tnode.arg = util.to_numpy(t.root.arg) if use_gpu else t.root.arg
                     elif not tnode.is_leaf():
-                        tnode.arg = util.to_numpy(t[tnode.name].arg)
+                        tnode.arg = (
+                            util.to_numpy(t[tnode.name].arg)
+                            if use_gpu
+                            else t[tnode.name].arg
+                        )
                 trees.append(t1)
             # break
         log_likelihoods = xp.array(log_likelihoods)
@@ -917,7 +931,7 @@ def estimate_copy_number(copies, tree):
     return np.mean(nums)
 
 
-def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None, allele=1):
+def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None, allele=1, loh=True):
     if not gene_names:
         gene_names = [f"gene_{i}" for i in range(len(decoded_trees))]
     traversor = util.TraversalGenerator()
@@ -932,7 +946,7 @@ def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None, allele=1):
             else:
                 if node.cn[allele] > node.parent.cn[allele]:
                     tree[node.name].events["gain"].append(gene_name)
-                if node.cn[allele] < node.parent.cn[allele]:
+                if node.cn[allele] < node.parent.cn[allele] and (node.cn[allele] == 0 if loh else True):
                     tree[node.name].events["loss"].append(gene_name)
     return tree
 
@@ -949,7 +963,8 @@ def map_copy_gain_and_loss(
     seq_error=0.01,
     af=0.5,
     cn_noise=0.05,
-    allele=1, # 0: wildtype 1: mutant
+    allele=1,  # 0: wildtype 1: mutant
+    loh=True, # loh deletion only
     use_gpu=False,
 ):
     if loci is None:
@@ -985,7 +1000,7 @@ def map_copy_gain_and_loss(
         reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af
     )
     trees = s.viterbi_decoding(probs, tree, sites, use_gpu=use_gpu)
-    mapped_tree = find_copy_gain_loss_on_branch(trees, gene_names=loci)
+    mapped_tree = find_copy_gain_loss_on_branch(trees, gene_names=loci, allele=allele)
     return mapped_tree
 
 
