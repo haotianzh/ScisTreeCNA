@@ -14,7 +14,7 @@ ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing 
 
 ## ⚠️ Important Note: GPU Requirement
 
-ScisTreeCNA relies exclusively on **NVIDIA CUDA GPUs** to achieve high-performance probabilistic reconstruction. CPU-only environments are **not** supported.
+ScisTreeCNA relies exclusively on **CUDA** to achieve high-performance probabilistic reconstruction. CPU-only environments are **not** supported.
 
 However, anyone can try ScisTreeCNA using Google Colab with free T4 GPU access:  [![colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing).  To get started with colab, first make your own copy of the notebook and then you can modify your copy to try to use new data.
 
