@@ -15,6 +15,8 @@ from .scistreecna import (
 	estimate_copy_number,
 	find_copy_gain_loss_on_branch,
 	infer,
+    evaluate,
+    map_copy_gain_and_loss,
     console
 )
 from .topological_sort import batch_topological_sort, topological_sort

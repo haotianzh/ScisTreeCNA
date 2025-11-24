@@ -669,10 +669,13 @@ class ScisTreeCNA:
         tree_batch_size=64,
         node_batch_size=32,
         verbose=True,
-        verbose_mode='all'
+        verbose_mode="all",
     ):
         # tree = self.initial_tree(probs)
-        assert verbose and verbose_mode in ['all', 'min'], "verbose mode should be set to either 'all' or 'min'."
+        assert verbose and verbose_mode in [
+            "all",
+            "min",
+        ], "verbose mode should be set to either 'all' or 'min'."
         L = -np.inf
         iters = 0
         context = (
@@ -701,10 +704,12 @@ class ScisTreeCNA:
                     ):
                         str_log += f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
                     if verbose:
-                        if verbose_mode == 'all':
+                        if verbose_mode == "all":
                             console.log(str_log)
                         else:
-                            context.update(f'[bold green]NNI Searching[/bold green]\t{str_log}')
+                            context.update(
+                                f"[bold green]NNI Searching[/bold green]\t{str_log}"
+                            )
                     iters += 1
         return tree, L
 
@@ -726,14 +731,19 @@ class ScisTreeCNA:
                     print("acc:", util.tree_accuracy(ground_truth, tree))
         return tree, L
 
-    def maximal_evaluate(self, probs, tree, return_trees=False, reads=None, masks=None):
+    def maximal_evaluate(
+        self, probs, tree, return_trees=False, reads=None, masks=None, use_gpu=True
+    ):
+        xp = cp if use_gpu else np
+        if not use_gpu:
+            probs = cp.asnumpy(probs)  # copy to cpu anyway
         # nsite, ncell = len(reads), len(reads[0])
         tree = tree.copy()
         ncell, nsite, _ = probs.shape
         tran_prob_mut_broadcast = cp.tile(self.tran_prob_mutation, (nsite, 1)).reshape(
             nsite, probs.shape[-1], -1
         )
-        tran_prob_mut_free_broadcast = cp.tile(
+        tran_prob_mut_free_broadcast = xp.tile(
             self.tran_prob_mutation_free, (nsite, 1)
         ).reshape(nsite, probs.shape[-1], -1)
         log_likelihoods = []
@@ -761,7 +771,7 @@ class ScisTreeCNA:
                             )
                             components.append(val_)
                             components_arg[child.identifier] = arg_
-                        node2.state = cp.sum(cp.array(components), axis=0)
+                        node2.state = xp.sum(xp.array(components), axis=0)
                         node2.arg = components_arg
                 if return_trees:
                     for tnode in self.traversor(t1):
@@ -811,8 +821,8 @@ class ScisTreeCNA:
                                 tran_prob_mut_free_broadcast, state
                             )
                             components.append(val_)
-                            components_arg[child.identifier] = arg_.astype(cp.int8)
-                    node2.state = cp.sum(cp.array(components), axis=0)
+                            components_arg[child.identifier] = arg_.astype(xp.int8)
+                    node2.state = xp.sum(xp.array(components), axis=0)
                     node2.arg = components_arg
             log_likelihood = t.root.state[:, self.index_gt(2, 0)]
             log_likelihoods.append(log_likelihood)
@@ -825,7 +835,7 @@ class ScisTreeCNA:
                         tnode.arg = util.to_numpy(t[tnode.name].arg)
                 trees.append(t1)
             # break
-        log_likelihoods = cp.array(log_likelihoods)
+        log_likelihoods = xp.array(log_likelihoods)
         max_L = log_likelihoods.max(axis=0).sum()
         # break
         if return_trees:
@@ -840,12 +850,12 @@ class ScisTreeCNA:
                 child_state_index = node.arg[child.identifier][site_index][state_index]
                 self._bfs(child, site_index, int(child_state_index))
 
-    def viterbi_decoding(self, probs, tree, sites):
+    def viterbi_decoding(self, probs, tree, sites, use_gpu=True):
         # total 2n+1 trees
         num_cell, num_site, _ = probs.shape
         decoded_trees = []
         max_L, likelihoods, trees = self.maximal_evaluate(
-            probs, tree, return_trees=True
+            probs, tree, return_trees=True, use_gpu=use_gpu
         )
         for site in sites:
             L = likelihoods[:, site]
@@ -907,7 +917,7 @@ def estimate_copy_number(copies, tree):
     return np.mean(nums)
 
 
-def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None):
+def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None, allele=1):
     if not gene_names:
         gene_names = [f"gene_{i}" for i in range(len(decoded_trees))]
     traversor = util.TraversalGenerator()
@@ -917,21 +927,73 @@ def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None):
     for d_tree, gene_name in zip(decoded_trees, gene_names):
         for node in traversor(d_tree):
             if node.is_root():
-                if node.cn[1] != 0:
+                if node.cn[allele] != 0:
                     tree[node.name].events["gain"].append(gene_name)
             else:
-                if node.cn[1] > node.parent.cn[1]:
+                if node.cn[allele] > node.parent.cn[allele]:
                     tree[node.name].events["gain"].append(gene_name)
-                if node.cn[1] < node.parent.cn[1]:
+                if node.cn[allele] < node.parent.cn[allele]:
                     tree[node.name].events["loss"].append(gene_name)
     return tree
+
+
+def map_copy_gain_and_loss(
+    reads,
+    tree,
+    loci=None,
+    cell_names=None,
+    site_names=None,
+    cn_min=1,
+    cn_max=5,
+    ado=0.1,
+    seq_error=0.01,
+    af=0.5,
+    cn_noise=0.05,
+    allele=1, # 0: wildtype 1: mutant
+    use_gpu=False,
+):
+    if loci is None:
+        loci = site_names
+    assert len(loci) > 0, "loci is empty."
+    assert cn_min > 0, "cn_min should be greater than 0."
+    n_sites, n_cells, _ = reads.shape
+    if cell_names is None:
+        cell_names = util.get_default_cell_names(n_cells)
+    if site_names is None:
+        site_names = util.get_default_site_names(n_sites)
+    sites = []
+    for locus in loci:
+        assert locus in site_names, f"{locus} is not in site_names."
+        sites.append(site_names.index(locus))
+
+    start_tree, _ = external.infer_scistree2_tree(reads, cell_names=cell_names)
+    # need to convert back to numerical labels.
+    start_tree = util.relabel(
+        start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
+    )
+    cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
+
+    s = ScisTreeCNA(
+        CN_MAX=cn_max,
+        CN_MIN=cn_min,
+        LAMBDA_C=cn_avg,
+        LAMBDA_S=1,
+        LAMBDA_T=2 * n_cells - 1,
+        verbose=False,
+    )
+    probs = s.init_prob_leaves_gpu(
+        reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af
+    )
+    trees = s.viterbi_decoding(probs, tree, sites, use_gpu=use_gpu)
+    mapped_tree = find_copy_gain_loss_on_branch(trees, gene_names=loci)
+    return mapped_tree
 
 
 def infer(
     reads,
     cell_names=None,
     cn_min=1,
-    cn_max=4,
+    cn_max=5,
     ado=0.1,
     seq_error=0.01,
     af=0.5,
@@ -940,7 +1002,7 @@ def infer(
     node_batch_size=64,
     true_tree=None,
     verbose=True,
-    verbose_mode='all'
+    verbose_mode="all",
 ):
     assert cn_min > 0, "cn_min should be greater than 0."
     n_sites, n_cells, _ = reads.shape
@@ -987,7 +1049,7 @@ def infer(
         node_batch_size=node_batch_size,
         ground_truth=true_tree,
         verbose=verbose,
-        verbose_mode=verbose_mode
+        verbose_mode=verbose_mode,
     )
     ml2, indices = s.marginal_evaluate_dp(probs, tree)
     geno = construct_genotype(tree, indices)
@@ -997,3 +1059,44 @@ def infer(
 
     console.rule()
     return tree, geno
+
+
+def evaluate(
+    reads,
+    tree,
+    cell_names=None,
+    cn_min=1,
+    cn_max=5,
+    ado=0.1,
+    seq_error=0.01,
+    af=0.5,
+    cn_noise=0.05,
+):
+    assert cn_min > 0, "cn_min should be greater than 0."
+    n_sites, n_cells, _ = reads.shape
+    if cell_names is None:
+        cell_names = util.get_default_cell_names(n_cells)
+    start_tree, _ = external.infer_scistree2_tree(reads, cell_names=cell_names)
+    # need to convert back to numerical labels.
+    start_tree = util.relabel(
+        start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
+    )
+    cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
+
+    s = ScisTreeCNA(
+        CN_MAX=cn_max,
+        CN_MIN=cn_min,
+        LAMBDA_C=cn_avg,
+        LAMBDA_S=1,
+        LAMBDA_T=2 * n_cells - 1,
+        verbose=False,
+    )
+    probs = s.init_prob_leaves_gpu(
+        reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af
+    )
+    ml, indices = s.marginal_evaluate_dp(probs, tree)
+    geno = construct_genotype(tree, indices)
+    tree = util.relabel(
+        tree, name_map={str(i): name for i, name in enumerate(cell_names)}
+    )
+    return ml, geno
