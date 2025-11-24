@@ -8,7 +8,7 @@
 
 ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both Single-Nucleotide Variants (**SNVs**) and Copy-Number Alterations (**CNAs**) within a unified **probabilistic** framework. This approach provides accurate and scalable inference, making it ideal for modern single-cell datasets containing both SNV and CNA information.
 
-> **Note:** If you do not have copy-number data and only want to infer a cell lineage tree from SNVs only, please use [ScisTree2](https://github.com/yufengwudcs/ScisTree2).
+> **Note:** If you do not have copy-number data and want to infer a cell lineage tree from SNVs only, please use [ScisTree2](https://github.com/yufengwudcs/ScisTree2).
 
 ---
 
