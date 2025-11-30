@@ -18,7 +18,12 @@ warnings.filterwarnings("ignore")  # opts on log 0 is normal, a -inf is always e
 cp.set_printoptions(suppress=True)
 
 
-# os.environ['OPENBLAS_NUM_THREADS'] = '1'
+def set_cuda_device(gpu_id: int = 0) -> None:
+    num_gpus = cp.cuda.runtime.getDeviceCount()
+    assert gpu_id < num_gpus, f"Error: GPU {gpu_id} is not available."
+    cp.cuda.Device(gpu_id).use()
+
+
 class NodeBatchLoader:
     def __init__(self, trees, batch_size):
         self.trees = trees
@@ -1010,7 +1015,9 @@ def map_copy_gain_and_loss(
         reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af
     )
     trees = s.viterbi_decoding(probs, tree, sites, use_gpu=use_gpu)
-    mapped_tree = find_copy_gain_loss_on_branch(trees, gene_names=loci, allele=allele, loh=loh)
+    mapped_tree = find_copy_gain_loss_on_branch(
+        trees, gene_names=loci, allele=allele, loh=loh
+    )
     return mapped_tree
 
 

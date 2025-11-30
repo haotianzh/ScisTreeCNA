@@ -117,18 +117,20 @@ import scistreecna as scna
 # load example data
 reads, cell_names, site_names = scna.util.read_csv('./examples/test_data_reads.csv')
 # run inference
-scistreecna_tree, scistreecna_geno = scna.infer(reads,
-                                                cell_names=cell_names,  # cell names
-                                                ado=0.1,  # allelic dropout rate
-                                                seq_error=0.01,   # sequencing error
-                                                cn_noise=0.05,    # copy number noise
-                                                cn_min=1, # minimum copy number (>=1) 
-                                                cn_max=5, # maximum copy number
-                                                tree_batch_size=128,  # number of trees evaluated together
-                                                node_batch_size=256,  # number of nodes evaluated together 
-                                                verbose=True)  # print logs
-print(scistreecna_tree) # print inferred tree
-print(scistreecna_geno) # print imputed binary genotype
+scistreecna_tree, scistreecna_geno = scna.infer(
+    reads,
+    cell_names=cell_names,  # cell names
+    ado=0.1,  # allelic dropout rate
+    seq_error=0.01,  # sequencing error
+    cn_noise=0.05,  # copy number noise
+    cn_min=1,  # minimum copy number (>=1)
+    cn_max=5,  # maximum copy number
+    tree_batch_size=128,  # number of trees evaluated in parallel
+    node_batch_size=256,  # number of nodes evaluated in parallel
+    verbose=True, # print logs
+)  
+print(scistreecna_tree)  # print inferred tree
+print(scistreecna_geno)  # print imputed binary genotype
 ```
 More usage examples can be found in our [tutorials](tutorials/scistreecna_basic.ipynb).
 
