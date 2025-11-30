@@ -96,7 +96,7 @@ def generate_sample_clt(
     doublet=0,
     recurrent=0,
     rate_cn_gain=0.05,
-    rate_cn_loss=0.05, # 0.01
+    rate_cn_loss=0.05,  # 0.01
     beta_binomial=False,
     random_seed=42,
     tmpfile="tmp_tree.nwk",

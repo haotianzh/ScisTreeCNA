@@ -22,12 +22,13 @@ def main():
     )   
 
     # --- Hyperparameters (matching your infer function defaults) ---
-    parser.add_argument("--cn-min", type=int, default=1, help="Minimum Copy Number")
-    parser.add_argument("--cn-max", type=int, default=5, help="Maximum Copy Number")
-    parser.add_argument("--ado", type=float, default=0.1, help="Allelic Dropout rate")
-    parser.add_argument("--seq-error", type=float, default=0.01, help="Sequencing Error rate")
+    parser.add_argument("--cn-min", type=int, default=1, help="Minimum copy number")
+    parser.add_argument("--cn-max", type=int, default=5, help="Maximum copy number")
+    parser.add_argument("--ado", type=float, default=0.1, help="Allelic dropout rate")
+    parser.add_argument("--seq-error", type=float, default=0.01, help="Sequencing error rate")
     parser.add_argument("--af", type=float, default=0.5, help="Allele Frequency")
-    parser.add_argument("--cn-noise", type=float, default=0.05, help="Copy Number Noise")
+    parser.add_argument("--max-iter", type=int, default=0, help="Maximal iteration")
+    parser.add_argument("--cn-noise", type=float, default=0.05, help="Copy number noise")
     parser.add_argument("--tree-batch", type=int, default=64, help="Tree batch size")
     parser.add_argument("--node-batch", type=int, default=64, help="Node batch size")
     parser.add_argument("--verbose", action="store_true", default=True, help="Enable verbose output")
@@ -55,6 +56,7 @@ def main():
             ado=args.ado,
             seq_error=args.seq_error,
             af=args.af,
+            max_iter=args.max_iter,
             cn_noise=args.cn_noise,
             tree_batch_size=args.tree_batch,
             node_batch_size=args.node_batch,

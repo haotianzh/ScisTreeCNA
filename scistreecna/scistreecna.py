@@ -665,6 +665,7 @@ class ScisTreeCNA:
         self,
         probs,
         tree,
+        max_iter=0,
         ground_truth=None,
         tree_batch_size=64,
         node_batch_size=32,
@@ -677,12 +678,14 @@ class ScisTreeCNA:
             "min",
         ], "verbose mode should be set to either 'all' or 'min'."
         L = -np.inf
+        max_iter = np.inf if max_iter == 0 else max_iter
         iters = 0
+        is_converge = False
         context = (
             console.status("[bold green]NNI Searching") if verbose else nullcontext()
         )
         with context:
-            while True:
+            while iters < max_iter:
                 better_tree, likelihood = self.nni_search_sinlge_round_batch(
                     probs,
                     tree,
@@ -690,10 +693,7 @@ class ScisTreeCNA:
                     node_batch_size=node_batch_size,
                 )
                 if likelihood <= L:
-                    if verbose:
-                        console.log(
-                            f"[bold red]Local search complete. Best Likelihood: {L}"
-                        )
+                    is_converge = True
                     break
                 else:
                     L = likelihood
@@ -711,6 +711,15 @@ class ScisTreeCNA:
                                 f"[bold green]NNI Searching[/bold green]\t{str_log}"
                             )
                     iters += 1
+            if verbose:
+                if is_converge:
+                    console.log(
+                        f"[bold red]Local search converge. Best Likelihood: {L}"
+                    )
+                else:
+                    console.log(
+                        f"[bold red]Maximal iterations reached. Best Likelihood: {L}"
+                    )
         return tree, L
 
     def local_search(self, probs, tree, ground_truth=None):
@@ -946,7 +955,9 @@ def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None, allele=1, loh=
             else:
                 if node.cn[allele] > node.parent.cn[allele]:
                     tree[node.name].events["gain"].append(gene_name)
-                if node.cn[allele] < node.parent.cn[allele] and (node.cn[allele] == 0 if loh else True):
+                if node.cn[allele] < node.parent.cn[allele] and (
+                    node.cn[allele] == 0 if loh else True
+                ):
                     tree[node.name].events["loss"].append(gene_name)
     return tree
 
@@ -964,7 +975,7 @@ def map_copy_gain_and_loss(
     af=0.5,
     cn_noise=0.05,
     allele=1,  # 0: wildtype 1: mutant
-    loh=True, # loh deletion only
+    loh=True,  # loh deletion only
     use_gpu=False,
 ):
     if loci is None:
@@ -1000,7 +1011,7 @@ def map_copy_gain_and_loss(
         reads, ado=ado, seqerr=seq_error, cnerr=cn_noise, af=af
     )
     trees = s.viterbi_decoding(probs, tree, sites, use_gpu=use_gpu)
-    mapped_tree = find_copy_gain_loss_on_branch(trees, gene_names=loci, allele=allele)
+    mapped_tree = find_copy_gain_loss_on_branch(trees, gene_names=loci, allele=allele, loh=loh)
     return mapped_tree
 
 
@@ -1013,6 +1024,7 @@ def infer(
     seq_error=0.01,
     af=0.5,
     cn_noise=0.05,
+    max_iter=0,
     tree_batch_size=64,
     node_batch_size=64,
     true_tree=None,
@@ -1033,6 +1045,7 @@ def infer(
             true_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
         )
     cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
+    max_iter = max_iter if max_iter > 0 else np.inf
     if verbose:
         console.rule("[bold red]ScisTreeCNA")
         console.print(f"#Cell: {n_cells} #Site: {n_sites}", justify="center")
@@ -1041,7 +1054,7 @@ def infer(
             justify="center",
         )
         console.print(
-            f"TREE_BATCH_SIZE: {tree_batch_size} NODE_BATCH_SIZE: {node_batch_size}",
+            f"MAX_ITER: {max_iter} TREE_BATCH_SIZE: {tree_batch_size} NODE_BATCH_SIZE: {node_batch_size}",
             justify="center",
         )
         console.rule("[bold red]Local Search")
@@ -1060,6 +1073,7 @@ def infer(
     tree, likelihood = s.local_search_batch(
         probs,
         start_tree,
+        max_iter=max_iter,
         tree_batch_size=tree_batch_size,
         node_batch_size=node_batch_size,
         ground_truth=true_tree,
