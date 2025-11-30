@@ -1,7 +1,6 @@
 import warnings
 from contextlib import nullcontext
 import scistree2 as s2
-from phytreeviz import TreeViz  # for tree visuaization
 import numpy as np
 import cupy as cp
 from time import time

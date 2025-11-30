@@ -7,22 +7,21 @@ name = "scistreecna"
 dynamic = ["version"]     
 description = "ScisTreeCNA: accurate probabilistic reconstruction of cell lineage tree from SNVs and CNAs"
 readme = "README.md" 
-requires-python = ">=3.6" 
+requires-python = ">=3.8" 
 license = { text = "GPL3" }
 authors = [
     { name = "Haotian Zhang", email = "haotianzh@uconn.edu" },
     { name = "Yufeng Wu", email = "yufeng.wu@uconn.edu" }
 ]
-keywords = ["cell lineage tree", "fast inference", "copy number alteration", "single-cell sequencing", "SNV", "CNA"]
+keywords = ["cell lineage tree", "fast inference", "copy number alteration", "single-cell sequencing", "SNV", "CNA", "CUDA", "GPU acceleration"]
 
-# need g++ to compile some dependencies.
+# cupy need to be setup seperately based on user's CUDA version
 dependencies = [
     "numpy",
     "pandas",
     "pptree",
     "scistree2",
     "scsim",
-    "phytreeviz",
     "scikit-learn",
     "scipy",
     "biopython",
@@ -47,9 +46,10 @@ packages = ["scistreecna", "scistreecna.util", "scistreecna.base", "scistreecna.
 version = {attr = "scistreecna.__version__"}
 
 [project.scripts]
-# This creates a command "scistree" in your terminal
+# This creates a command "scistreecna" in your terminal
 scistreecna = "scistreecna.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/haotianzh/ScisTreeCNA"
+Paper = "https://www.biorxiv.org/content/10.1101/2025.11.21.689819v1"
 "Bug Tracker" = "https://github.com/haotianzh/ScisTreeCNA/issues"
