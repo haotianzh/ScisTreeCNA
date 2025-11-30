@@ -13,7 +13,7 @@ def main():
     parser.add_argument(
         "--input", "-i",
         required=True,
-        help="Path to input reads file (.csv format, see example)"
+        help="Path to input reads file (.csv format, see https://github.com/haotianzh/ScisTreeCNA/blob/main/examples/test_data_reads.csv)"
     )
     parser.add_argument(
         "--output", "-o",
