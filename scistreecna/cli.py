@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--cn-noise", type=float, default=0.05, help="Copy number noise")
     parser.add_argument("--tree-batch", type=int, default=64, help="Tree batch size")
     parser.add_argument("--node-batch", type=int, default=64, help="Node batch size")
-    parser.add_argument("--verbose", action="store_true", default=True, help="Enable verbose output")
+    parser.add_argument("--verbose", action="store_true", default=False, help="Enable verbose output")
 
     args = parser.parse_args()
 

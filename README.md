@@ -132,28 +132,24 @@ scistreecna --input ./examples/test_data_reads.csv --output test_output
 ```
 Detailed usage:
 ```
-usage: scistreecna [-h] --input INPUT [--output OUTPUT] [--cn-min CN_MIN] [--cn-max CN_MAX] [--ado ADO] [--seq-error SEQ_ERROR] [--af AF] [--cn-noise CN_NOISE] [--tree-batch TREE_BATCH] [--node-batch NODE_BATCH] [--verbose]
+usage: scistreecna [-h] --input INPUT [--output OUTPUT] [--cn-min CN_MIN] [--cn-max CN_MAX] [--ado ADO] [--seq-error SEQ_ERROR] [--af AF] [--max-iter MAX_ITER] [--cn-noise CN_NOISE] [--tree-batch TREE_BATCH] [--node-batch NODE_BATCH] [--verbose]
 
 CLI for ScisTreeCNA inference.
 
 options:
-  -h, --help            Show this help message and exit
-  --input INPUT, -i INPUT
-                        Path to input reads file (.npy format expected for 3D arrays)
-  --output OUTPUT, -o OUTPUT
-                        Prefix for output files. Saves as {prefix}_tree.txt and
-                        {prefix}_genotype.txt (default: 'output')
-  --cn-min CN_MIN       Minimum copy number
-  --cn-max CN_MAX       Maximum copy number
-  --ado ADO             Allelic dropout rate
-  --seq-error SEQ_ERROR Sequencing error rate
-  --af AF               Expected allele frequency
-  --cn-noise CN_NOISE   Copy-number noise level
-  --tree-batch TREE_BATCH
-                        Tree batch size
-  --node-batch NODE_BATCH
-                        Node batch size
-  --verbose             Enable verbose output
+  -h, --help                    show this help message and exit
+  --input INPUT, -i INPUT       Path to input reads file (.npy format expected for 3D arrays)
+  --output OUTPUT, -o OUTPUT    Prefix for output files. Saves as {prefix}_tree.txt and {prefix}_genotype.txt (default: 'output')
+  --cn-min CN_MIN               Minimum copy number (default: 1)
+  --cn-max CN_MAX               Maximum copy number (default: 5)
+  --ado ADO                     Allelic dropout rate (default: 0.1)
+  --seq-error SEQ_ERROR         Sequencing error rate (default: 0.01)
+  --af AF                       Allele Frequency (default: 0.5)
+  --max-iter MAX_ITER           Maximal local search iteration (default: infinity)
+  --cn-noise CN_NOISE           Copy number noise (default: 0.05)
+  --tree-batch TREE_BATCH       Tree batch size (default: 64)
+  --node-batch NODE_BATCH       Node batch size (default: 64)
+  --verbose                     Enable verbose logs (default: False)
 ```
 
 
