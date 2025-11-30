@@ -41,6 +41,7 @@ from .scistreecna import (
     infer,
     evaluate,
     map_copy_gain_and_loss,
+    set_cuda_device,
     console,
 )
 from .topological_sort import batch_topological_sort, topological_sort
