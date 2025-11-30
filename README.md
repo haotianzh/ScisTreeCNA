@@ -138,7 +138,7 @@ CLI for ScisTreeCNA inference.
 
 options:
   -h, --help                    show this help message and exit
-  --input INPUT, -i INPUT       Path to input reads file (.npy format expected for 3D arrays)
+  --input INPUT, -i INPUT       Path to input reads file (see https://github.com/haotianzh/ScisTreeCNA/blob/main/examples/test_data_reads.csv)
   --output OUTPUT, -o OUTPUT    Prefix for output files. Saves as {prefix}_tree.txt and {prefix}_genotype.txt (default: 'output')
   --cn-min CN_MIN               Minimum copy number (default: 1)
   --cn-max CN_MAX               Maximum copy number (default: 5)
