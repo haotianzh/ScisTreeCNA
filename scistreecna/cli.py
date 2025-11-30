@@ -13,7 +13,7 @@ def main():
     parser.add_argument(
         "--input", "-i",
         required=True,
-        help="Path to input reads file (.npy format expected for 3D arrays)"
+        help="Path to input reads file (.csv format, see example)"
     )
     parser.add_argument(
         "--output", "-o",
