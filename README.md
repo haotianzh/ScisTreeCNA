@@ -114,6 +114,7 @@ This example demonstrates loading example data and running the tree reconstructi
 
 ```python
 import scistreecna as scna
+# scna.set_cuda_device(1) # set to gpu:1
 # load example data
 reads, cell_names, site_names = scna.util.read_csv('./examples/test_data_reads.csv')
 # run inference
