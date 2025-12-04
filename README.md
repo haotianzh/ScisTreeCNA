@@ -99,9 +99,9 @@ If you already have the **NVIDIA CUDA Toolkit** installed on your system (or you
 Once installed, ScisTreeCNA can be used directly from your Python environment.
 ### Input
 To run the inference, you must prepare an input `.csv` file where **rows represent sites** and **columns represent cells**. For each *(cell, site)* pair, the entry is a string in the format **`#ref|#alt|#cn`**, where:
-- **ref**: read count of the reference (wild-type) allele  
-- **alt**: read count of the mutant allele  
-- **cn**: observed copy number (either absolute copy number — recommended — or relative copy state)
+- **#ref**: read count of the reference (wild-type) allele  
+- **#alt**: read count of the mutant allele  
+- **#cn**: observed copy number (either absolute copy number — recommended — or relative copy state)
 
 Missing values should be encoded as:
 
