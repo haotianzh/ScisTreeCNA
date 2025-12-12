@@ -5,7 +5,8 @@
 <!-- &thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a> -->
 <!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
 
-*This repository contains the code for the paper **"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"**, submitted for publication, 2025. Here is the [preprint](https://www.biorxiv.org/content/10.1101/2025.11.21.689819v1).*
+*This repository contains the code for the paper 
+>[**"Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs with ScisTreeCNA"**, preprint, 2025.](https://www.biorxiv.org/content/10.1101/2025.11.21.689819v1)
 
 
 ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both single nucleotide variants (**SNVs**) and copy number abberations (**CNAs**) within a unified **probabilistic** framework. This approach provides accurate and scalable inference for modern single-cell datasets containing both SNV and CNA information.
@@ -97,15 +98,15 @@ If you already have the **NVIDIA CUDA Toolkit** installed on your system (or you
 ## 💡 Usage
 Once installed, ScisTreeCNA can be used directly from your Python environment.
 ### Input
-To run the inference, you must prepare an input `.csv` file where **rows represent sites** and **columns represent cells**. For each *(cell, site)* pair, the entry is a string in the format **`ref|alt|cn`**, where:
-- **ref**: read count of the reference (wild-type) allele  
-- **alt**: read count of the mutant allele  
-- **cn**: observed copy number (either absolute copy number — recommended — or relative copy state)
+To run the inference, you must prepare an input `.csv` file where **rows represent sites** and **columns represent cells**. For each *(cell, site)* pair, the entry is a string in the format **`#ref|#alt|#cn`**, where:
+- **#ref**: read count of the reference (wild-type) allele  
+- **#alt**: read count of the mutant allele  
+- **#cn**: observed copy number (either absolute copy number — recommended — or relative copy state)
 
 Missing values should be encoded as:
 
-- `.|.|cn` — if read counts are missing but copy number is available  
-- `ref|alt|.` - if only copy number is missing
+- `.|.|#cn` — if read counts are missing but the copy number is available  
+- `#ref|#alt|.` - if only the copy number is missing
 - `.|.|.` — if both read counts and copy number are missing
 
  Example input files are provided in the `examples/` directory for reference.
