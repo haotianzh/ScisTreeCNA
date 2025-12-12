@@ -10,6 +10,17 @@ def tree_accuracy(tree1, tree2):
     return count / len(splits1)
 
 
+def generalized_tree_accuracy(tree1, tree2):
+    total = 0
+    total_weights = 0
+    splits1 = tree1.get_splits(return_label=True)
+    splits2 = tree2.get_splits(return_label=True)
+    for split in splits1:
+        total += int(split in splits2) * len(split)
+        total_weights += len(split)
+    return total / total_weights
+
+
 def split_accuracy(splits1, splits2):
     count = 0
     for split in splits1:
