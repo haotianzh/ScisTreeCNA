@@ -95,7 +95,7 @@ def generate_sample_clt(
     coverage_std=5,
     doublet=0,
     recurrent=0,
-    rate_cn_gain=0.05,
+    rate_cn_gain=0.05,  # 0.05
     rate_cn_loss=0.05,  # 0.01
     beta_binomial=False,
     random_seed=42,
@@ -214,16 +214,16 @@ def generate_sample_clone(
     return data, tg
 
 
-def simulate_data(n_cells, n_sites, mode="clt", n_clusters=4, cn_noise=0.05, missing=0):
+def simulate_data(n_cells, n_sites, mode="clt", n_clusters=4, cn_noise=0.05, missing=0, **kwargs):
     assert mode in ["clt", "clone"], f"Only 'clt', and 'clone' are supported yet."
 
     if mode == "clt":
         tree = generate_cell_lineage_tree(n_cells=n_cells, scale=0.2)
-        reads, tg = generate_sample_clt(tree, n_sites)
+        reads, tg = generate_sample_clt(tree, n_sites, **kwargs)
         tg = util.ggeno_to_bgeno(tg)
     if mode == "clone":
         tree = generate_clonal_tree(n_cells=n_cells, n_clusters=n_clusters)
-        reads, tg = generate_sample_clone(tree, n_sites)
+        reads, tg = generate_sample_clone(tree, n_sites, **kwargs)
         tg = util.ggeno_to_bgeno(tg)
     if cn_noise > 0:
         reads, masks = util_sim.add_copy_number_noise2(

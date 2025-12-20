@@ -1035,17 +1035,28 @@ def infer(
     node_batch_size=64,
     true_tree=None,
     verbose=True,
+    start_tree=None,
     verbose_mode="all",
 ):
     assert cn_min > 0, "cn_min should be greater than 0."
     n_sites, n_cells, _ = reads.shape
     if cell_names is None:
         cell_names = util.get_default_cell_names(n_cells)
-    start_tree, _ = external.infer_scistree2_tree(reads, cell_names=cell_names)
-    # need to convert back to numerical labels.
-    start_tree = util.relabel(
-        start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
-    )
+
+    if start_tree is None:
+        start_tree, _ = external.infer_scistree2_tree(reads, cell_names=cell_names)
+        # need to convert back to numerical labels.
+        start_tree = util.relabel(
+            start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
+        )
+    else:
+        if isinstance(start_tree, str):
+            start_tree = util.from_newick(start_tree)
+        elif isinstance(start_tree, util.BaseTree):
+            start_tree = start_tree
+        else:
+            raise Exception("start tree is invalid.")
+        
     if true_tree is not None and isinstance(true_tree, util.BaseTree):
         true_tree = util.relabel(
             true_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
@@ -1135,3 +1146,25 @@ def evaluate(
         tree, name_map={str(i): name for i, name in enumerate(cell_names)}
     )
     return ml, geno
+
+
+def bootstrapping(
+    reads,
+    tree,
+    n_bootstrap=10,
+    n_site=-1,
+    cell_names=None,
+    cn_min=1,
+    cn_max=5,
+    ado=0.1,
+    seq_error=0.01,
+    af=0.5,
+    cn_noise=0.05,
+    max_iter=0,
+    tree_batch_size=64,
+    node_batch_size=64,
+    true_tree=None,
+    verbose=True,
+    verbose_mode="all",
+):
+    pass
