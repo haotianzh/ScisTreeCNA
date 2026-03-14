@@ -507,17 +507,37 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
 
 
 # mat1: (nsite, k) mat2: (k, k)
+# Optimized: shared memory for mat2 + two-pass log-sum-exp
 kernel_log_matmul = r"""
 extern "C" __global__ void log_matmul(float* mat1, float* mat2, float* out, int n, int k){
-    int i = blockIdx.x * blockDim.x + threadIdx.x; 
-    int j = blockIdx.y * blockDim.y + threadIdx.y; 
+    extern __shared__ float s_mat2[];
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int tid_local = threadIdx.x * blockDim.y + threadIdx.y;
+    int total_threads = blockDim.x * blockDim.y;
+
+    // Cooperatively load mat2 into shared memory
+    for (int idx = tid_local; idx < k * k; idx += total_threads) {
+        s_mat2[idx] = mat2[idx];
+    }
+    __syncthreads();
+
     if (i < n && j < k) {
-        out[i*k+j] = logf(0.0f); 
-        for (int p=0; p<k; p++){
-            float m = fmaxf(out[i*k+j], mat1[i*k+p] + mat2[j*k+p]);
-            if (!__isinf(m))
-                out[i*k+j] = m + logf(expf(out[i*k+j] - m) + expf(mat1[i*k+p] + mat2[j*k+p] - m));
-        }   
+        // Two-pass log-sum-exp (numerically stable)
+        float maxval = -1.0f / 0.0f;
+        for (int p = 0; p < k; ++p) {
+            float val = mat1[i*k + p] + s_mat2[j*k + p];
+            if (val > maxval) maxval = val;
+        }
+        float sumexp = 0.0f;
+        if (!isinf(maxval) || maxval > 0.0f) {
+            for (int p = 0; p < k; ++p) {
+                float val = mat1[i*k + p] + s_mat2[j*k + p];
+                if (!isinf(val)) sumexp += expf(val - maxval);
+            }
+        }
+        out[i*k + j] = (sumexp > 0.0f) ? maxval + logf(sumexp) : -1.0f / 0.0f;
     }
 }
 """
@@ -559,23 +579,43 @@ extern "C" __global__ void log_matmul(float* mat1, float* mat2, float* out, int 
 
 
 # non-contiguous pointers: logmatmul
+# Optimized: shared memory for mat2 + two-pass log-sum-exp + off-by-one fix
 kernel_batch_log_matmul = r"""
 extern "C" __global__ void batch_log_matmul(float** bmat1, float* mat2, float** bout, int m, int n, int k){
+    extern __shared__ float s_mat2[];
+
     int z = blockIdx.z;
-    if (z > m)
-        return;
-    int i = blockIdx.x * blockDim.x + threadIdx.x; 
+    if (z >= m) return;
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
-    float* mat1 = bmat1[z];
-    float* out = bout[z]; 
+    int tid_local = threadIdx.x * blockDim.y + threadIdx.y;
+    int total_threads = blockDim.x * blockDim.y;
+
+    // Cooperatively load mat2 (k x k) into shared memory
+    for (int idx = tid_local; idx < k * k; idx += total_threads) {
+        s_mat2[idx] = mat2[idx];
+    }
+    __syncthreads();
+
     if (i < n && j < k) {
-        out[i*k+j] = logf(0.0f); 
-        for (int p=0; p<k; p++){
-            float m = fmaxf(out[i*k+j], mat1[i*k+p] + mat2[j*k+p]);
-            if (!isinf(m)){
-                out[i*k+j] = m + logf(expf(out[i*k+j] - m) + expf(mat1[i*k+p] + mat2[j*k+p] - m));
+        float* mat1 = bmat1[z];
+        float* out = bout[z];
+
+        // Two-pass log-sum-exp
+        float maxval = -1.0f / 0.0f;
+        for (int p = 0; p < k; ++p) {
+            float val = mat1[i*k + p] + s_mat2[j*k + p];
+            if (val > maxval) maxval = val;
+        }
+        float sumexp = 0.0f;
+        if (!isinf(maxval) || maxval > 0.0f) {
+            for (int p = 0; p < k; ++p) {
+                float val = mat1[i*k + p] + s_mat2[j*k + p];
+                if (!isinf(val)) sumexp += expf(val - maxval);
             }
-        } 
+        }
+        out[i*k + j] = (sumexp > 0.0f) ? maxval + logf(sumexp) : -1.0f / 0.0f;
     }
 }
 """
@@ -639,7 +679,7 @@ extern "C" __global__ void batch_log_3vecdot(float** bmat1, float** bmat2, float
 kernel_batch_matadd = r"""
 extern "C" __global__ void batch_matadd(float** bmat1, float** bmat2, float** bout, int m, int n, int k){
     int z = blockIdx.z;
-    if (z > m)
+    if (z >= m)
         return;
     int i = blockIdx.x * blockDim.x + threadIdx.x; 
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -657,7 +697,7 @@ extern "C" __global__ void batch_matadd(float** bmat1, float** bmat2, float** bo
 kernel_batch_matadd_stride = r"""
 extern "C" __global__ void batch_matadd_stride(float** bmat1, float** bmat2, float** bout, int m, int n, int k){
     int z = blockIdx.z;
-    if (z > m)
+    if (z >= m)
         return;
     int i = blockIdx.x * blockDim.x + threadIdx.x; 
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -667,6 +707,53 @@ extern "C" __global__ void batch_matadd_stride(float** bmat1, float** bmat2, flo
     if (i < n && j < k) {
         int l = i / k;
         out[i*k+j] = mat1[i*k+j] + mat2[l*k+j];
+    }
+}
+"""
+
+
+# Fused kernel: batch_matadd + batch_log_matmul in one launch
+# Computes: out[z] = log_matmul(mat_a[z] + mat_b[z], mat2)
+kernel_batch_add_log_matmul = r"""
+extern "C" __global__ void batch_add_log_matmul(
+    float** bmat_a, float** bmat_b, float* mat2, float** bout,
+    int m, int n, int k)
+{
+    extern __shared__ float s_mat2[];
+
+    int z = blockIdx.z;
+    if (z >= m) return;
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int tid_local = threadIdx.x * blockDim.y + threadIdx.y;
+    int total_threads = blockDim.x * blockDim.y;
+
+    // Cooperatively load mat2 (k x k) into shared memory
+    for (int idx = tid_local; idx < k * k; idx += total_threads) {
+        s_mat2[idx] = mat2[idx];
+    }
+    __syncthreads();
+
+    if (i < n && j < k) {
+        float* mat_a = bmat_a[z];
+        float* mat_b = bmat_b[z];
+        float* out = bout[z];
+
+        // Two-pass log-sum-exp over (mat_a + mat_b) @ mat2^T
+        float maxval = -1.0f / 0.0f;
+        for (int p = 0; p < k; ++p) {
+            float val = (mat_a[i*k + p] + mat_b[i*k + p]) + s_mat2[j*k + p];
+            if (val > maxval) maxval = val;
+        }
+        float sumexp = 0.0f;
+        if (!isinf(maxval) || maxval > 0.0f) {
+            for (int p = 0; p < k; ++p) {
+                float val = (mat_a[i*k + p] + mat_b[i*k + p]) + s_mat2[j*k + p];
+                if (!isinf(val)) sumexp += expf(val - maxval);
+            }
+        }
+        out[i*k + j] = (sumexp > 0.0f) ? maxval + logf(sumexp) : -1.0f / 0.0f;
     }
 }
 """
@@ -710,6 +797,10 @@ def batch_matadd_cuda():
 
 def batch_matadd_stride_cuda():
     return cp.RawKernel(kernel_batch_matadd_stride, "batch_matadd_stride")
+
+
+def batch_add_log_matmul_cuda():
+    return cp.RawKernel(kernel_batch_add_log_matmul, "batch_add_log_matmul")
 
 
 if __name__ == "__main__":

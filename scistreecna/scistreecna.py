@@ -10,6 +10,7 @@ from . import util, external
 from .cn_estimate import *
 from .topological_sort import *
 from .transition_solver import *
+from .base.tree import struct_copy_tree
 
 
 console = Console(force_jupyter=False, log_path=False, width=96)
@@ -232,169 +233,195 @@ class ScisTreeCNA:
         # print(sorted(tree.get_leaves()))
         return tree
 
-    def calculate_U_batch(self, probs, trees, batch_size=512):
-        """
-        U_ and _U is not necessarily be stored. computing is not actually time-consuming. (memalloc is bottleneck)
-        """
-        h, w = probs.shape[1:]
-        loader = NodeBatchLoader(trees, batch_size)
-        zeros = cp.zeros([3 * len(loader), h, w], dtype=cp.float32)
-        cur = 0
-        for nodes in loader(order="up"):
-            # print(len(nodes))
-            INIT = False
-            # zeros = cp.zeros([3*len(nodes), h, w], dtype=cp.float32)
-            # cur = 0
-            for node in nodes:
-                # what if I store pointers only
-                node.U = zeros[cur]
-                node._U = zeros[cur + 1]
-                node.U_ = zeros[cur + 2]
-                cur += 3
-                if node.is_leaf():
-                    node.U = probs[int(node.name)]
-                    INIT = True
-
-            # ts += time() - t
-            # print([n.U.data.ptr for n in nodes])
-            # t = time()
-            ptr_u = cp.array([n.U.data.ptr for n in nodes])
-            ptr_u_ = cp.array([n.U_.data.ptr for n in nodes])
-            ptr__u = cp.array([n._U.data.ptr for n in nodes])
-            block_size = (32, 32)
-            grid_size = (
-                (h + block_size[0] - 1) // block_size[0],
-                (w + block_size[1] - 1) // block_size[1],
-                len(nodes),
-            )
-            # ts += time() - t
-            # calculate U
-            if not INIT:
-                ptr_c0_u_ = cp.array([n.get_children()[0].U_.data.ptr for n in nodes])
-                ptr_c1_u_ = cp.array([n.get_children()[1].U_.data.ptr for n in nodes])
-                util.batch_matadd_cuda()(
-                    grid_size,
-                    block_size,
-                    (ptr_c0_u_, ptr_c1_u_, ptr_u, len(nodes), h, w),
-                )
-            # calculate U_ and _U
-            util.batch_log_matmul_cuda()(
-                grid_size,
-                block_size,
-                (ptr_u, self.tran_prob_mutation_free, ptr_u_, len(nodes), h, w),
-            )
-            util.batch_log_matmul_cuda()(
-                grid_size,
-                block_size,
-                (ptr_u, self.tran_prob_mutation, ptr__u, len(nodes), h, w),
-            )
-
-    def calculate_Q_batch(self, probs, trees, batch_size=512):
-        """
-        Actually, only (2,0) need to be considered, this leads to less memory consumption: (num_site, k, k) -> (num_site, k)
-        """
-        h, w = probs.shape[1:]
-        loader = NodeBatchLoader(trees, batch_size)
-        zeros = cp.zeros([2 * len(loader), h, w], dtype=cp.float32)
-        tran_prob_mutation_free_t = cp.ascontiguousarray(self.tran_prob_mutation_free.T)
-        zeros[:, :, self.index_gt(2, 0)] = 1
-        zeros = cp.log(zeros)
-        cur = 0
-        for nodes in loader(order="down"):
-            INIT = False
-            for node in nodes:
-                node.Q = zeros[cur]
-                node.Q_ = zeros[cur + 1]
-                cur += 2
-                if node.is_root():
-                    INIT = True
-
-            block_size = (32, 32)
-            grid_size = (
-                (h + block_size[0] - 1) // block_size[0],
-                (w + block_size[1] - 1) // block_size[1],
-                len(nodes),
-            )
-            # calculate Q
-            if not INIT:
-                ptr_par_q = cp.array([n.parent.Q.data.ptr for n in nodes])
-                ptr_q = cp.array([n.Q.data.ptr for n in nodes])
-                ptr_q_ = cp.array([n.Q_.data.ptr for n in nodes])
-                ptr_u = cp.array([n.get_siblings()[0].U_.data.ptr for n in nodes])
-                util.batch_matadd_cuda()(
-                    grid_size, block_size, (ptr_par_q, ptr_u, ptr_q_, len(nodes), h, w)
-                )
-                util.batch_log_matmul_cuda()(
-                    grid_size,
-                    block_size,
-                    (ptr_q_, tran_prob_mutation_free_t, ptr_q, len(nodes), h, w),
-                )
+    def _get_block_grid(self, h, w, batch):
+        """Compute optimal block/grid sizes for (h, w) matrices with batch."""
+        block_y = min(32, w)
+        block_x = max(1, min(256 // block_y, 32))
+        block_size = (block_x, block_y)
+        grid_size = (
+            (h + block_size[0] - 1) // block_size[0],
+            (w + block_size[1] - 1) // block_size[1],
+            batch,
+        )
+        return block_size, grid_size
 
     def marginal_evaluate_dp_batch(self, probs, trees, batch_size=512):
+        """Evaluate all trees in batch using contiguous GPU arrays + index-based pointers.
+        Eliminates Python-loop bottleneck from the old per-node attribute assignment."""
         h, w = probs.shape[1:]
-        self.calculate_U_batch(probs, trees, batch_size)
-        self.calculate_Q_batch(probs, trees, batch_size)
-        loader = NodeBatchLoader(trees, batch_size=batch_size)
-        likelihoods = cp.log(
-            cp.zeros((len(loader) - len(trees), h), dtype=cp.float32)
-        )  # ((n-1)) * n_tree (no mut on root) n: #all nodes
-        likelihoods_root = cp.zeros((3 * len(trees), h), dtype=cp.float32)
-        tids = []
-        idx = 0
-        idx_root = 0
-        for nodes in loader(order="all"):
-            # now have both U and Q, get max of all nodes
-            ptr_u_ = []
-            ptr__u = []
-            ptr_u = []
-            ptr_q = []
-            tid = []
-            for node in nodes:
-                if node.is_root():
-                    likelihoods_root[idx_root] = node.U[:, self.index_gt(0, 2)]
-                    likelihoods_root[idx_root + 1] = node.U[:, self.index_gt(1, 1)]
-                    likelihoods_root[idx_root + 2] = node.U[:, self.index_gt(2, 0)]
-                    idx_root += 3
-                    pass
-                else:
-                    ptr__u.append(node._U.data.ptr)
-                    ptr_u_.append(node.get_siblings()[0].U_.data.ptr)
-                    ptr_q.append(node.parent.Q.data.ptr)
-                    ptr_u.append(node.U.data.ptr)
-                tid.append(node.tid)
-            ptr_u_ = cp.array(ptr_u_)
-            ptr__u = cp.array(ptr__u)
-            ptr_q = cp.array(ptr_q)
-            ptr_u = cp.array(ptr_u)  # U is no longer needed
-            block_size = (256, 1)
-            grid_size = (((h + block_size[0] - 1) // block_size[0]), 1, len(ptr_u))
-            res = likelihoods[idx : idx + len(ptr_u)]
-            # batch_log_vecdot_cuda()(grid_size, block_size, (ptr_u, ptr_q, res, len(ptr_u), h, w))
-            util.batch_log_3vecdot_cuda()(
-                grid_size, block_size, (ptr__u, ptr_u_, ptr_q, res, len(ptr_u), h, w)
-            )
-            tids += tid
-            idx += len(ptr_u)
+        shared_mem = w * w * 4
+        stride = h * w * 4  # bytes per (h, w) float32 slice
 
+        # ====== Phase 1: Pre-compute topology (one-time Python work) ======
+        node_id_map = {}  # id(node) -> flat index
+        idx = 0
+        for tid, tree in enumerate(trees):
+            nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
+            for nid, node in nodes_dict.items():
+                node_id_map[id(node)] = idx
+                node.tid = tid
+                idx += 1
+        total_nodes = idx
+
+        # Build topological layers with pre-computed GPU index arrays
+        layers_up = batch_topological_sort(trees, order="up")
+        up_layers = []
+        for layer in layers_up:
+            leaves = [n for n in layer if n.is_leaf()]
+            internals = [n for n in layer if not n.is_leaf()]
+            if leaves:
+                idx_l = cp.array([node_id_map[id(n)] for n in leaves], dtype=cp.int64)
+                cells = cp.array([int(n.name) for n in leaves], dtype=cp.int64)
+                up_layers.append(('leaf', idx_l, cells))
+            if internals:
+                idx_i = cp.array([node_id_map[id(n)] for n in internals], dtype=cp.int64)
+                c0 = cp.array([node_id_map[id(n.get_children()[0])] for n in internals], dtype=cp.int64)
+                c1 = cp.array([node_id_map[id(n.get_children()[1])] for n in internals], dtype=cp.int64)
+                up_layers.append(('internal', idx_i, c0, c1))
+
+        layers_down = batch_topological_sort(trees, order="down")
+        down_layers = []
+        for layer in layers_down:
+            roots = [n for n in layer if n.is_root()]
+            non_roots = [n for n in layer if not n.is_root()]
+            if roots:
+                down_layers.append(('root',))
+            if non_roots:
+                idx_nr = cp.array([node_id_map[id(n)] for n in non_roots], dtype=cp.int64)
+                par = cp.array([node_id_map[id(n.parent)] for n in non_roots], dtype=cp.int64)
+                sib = cp.array([node_id_map[id(n.get_siblings()[0])] for n in non_roots], dtype=cp.int64)
+                down_layers.append(('internal', idx_nr, par, sib))
+
+        # Pre-compute scoring indices (all nodes, grouped by tree)
+        nr_self, nr_sib, nr_par, root_list = [], [], [], []
+        for tid, tree in enumerate(trees):
+            nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
+            for nid, node in nodes_dict.items():
+                nidx = node_id_map[id(node)]
+                if node.is_root():
+                    root_list.append(nidx)
+                else:
+                    nr_self.append(nidx)
+                    nr_sib.append(node_id_map[id(node.get_siblings()[0])])
+                    nr_par.append(node_id_map[id(node.parent)])
+        nr_self_gpu = cp.array(nr_self, dtype=cp.int64)
+        nr_sib_gpu = cp.array(nr_sib, dtype=cp.int64)
+        nr_par_gpu = cp.array(nr_par, dtype=cp.int64)
+        root_gpu = cp.array(root_list, dtype=cp.int64)
+
+        # ====== Phase 2: Allocate contiguous GPU arrays ======
+        all_U  = cp.zeros((total_nodes, h, w), dtype=cp.float32)
+        all_U_ = cp.zeros((total_nodes, h, w), dtype=cp.float32)
+        all__U = cp.zeros((total_nodes, h, w), dtype=cp.float32)
+        base_U  = all_U.data.ptr
+        base_U_ = all_U_.data.ptr
+        base__U = all__U.data.ptr
+
+        # ====== Phase 3: Bottom-up (U) pass ======
+        for layer_info in up_layers:
+            if layer_info[0] == 'leaf':
+                _, indices, cell_ids = layer_info
+                nb = len(indices)
+                all_U[indices] = probs[cell_ids]
+                ptr_u  = base_U  + indices * stride
+                ptr_u_ = base_U_ + indices * stride
+                ptr__u = base__U + indices * stride
+                block_size, grid_size = self._get_block_grid(h, w, nb)
+                util.batch_log_matmul_cuda()(
+                    grid_size, block_size,
+                    (ptr_u, self.tran_prob_mutation_free, ptr_u_, nb, h, w),
+                    shared_mem=shared_mem)
+                util.batch_log_matmul_cuda()(
+                    grid_size, block_size,
+                    (ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w),
+                    shared_mem=shared_mem)
+            else:
+                _, indices, c0, c1 = layer_info
+                nb = len(indices)
+                ptr_c0_u_ = base_U_ + c0 * stride
+                ptr_c1_u_ = base_U_ + c1 * stride
+                ptr_u  = base_U  + indices * stride
+                ptr_u_ = base_U_ + indices * stride
+                ptr__u = base__U + indices * stride
+                block_size, grid_size = self._get_block_grid(h, w, nb)
+                util.batch_add_log_matmul_cuda()(
+                    grid_size, block_size,
+                    (ptr_c0_u_, ptr_c1_u_, self.tran_prob_mutation_free, ptr_u_,
+                     nb, h, w), shared_mem=shared_mem)
+                util.batch_matadd_cuda()(
+                    grid_size, block_size,
+                    (ptr_c0_u_, ptr_c1_u_, ptr_u, nb, h, w))
+                util.batch_log_matmul_cuda()(
+                    grid_size, block_size,
+                    (ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w),
+                    shared_mem=shared_mem)
+
+        # ====== Phase 4: Top-down (Q) pass ======
+        all_Q = cp.zeros((total_nodes, h, w), dtype=cp.float32)
+        all_Q[:, :, self.index_gt(2, 0)] = 1.0
+        all_Q = cp.log(all_Q)
+        base_Q = all_Q.data.ptr
+        tran_prob_mutation_free_t = cp.ascontiguousarray(self.tran_prob_mutation_free.T)
+
+        for layer_info in down_layers:
+            if layer_info[0] == 'root':
+                pass
+            else:
+                _, indices, par, sib = layer_info
+                nb = len(indices)
+                ptr_par_q  = base_Q  + par * stride
+                ptr_sib_u_ = base_U_ + sib * stride
+                ptr_q      = base_Q  + indices * stride
+                block_size, grid_size = self._get_block_grid(h, w, nb)
+                util.batch_add_log_matmul_cuda()(
+                    grid_size, block_size,
+                    (ptr_par_q, ptr_sib_u_, tran_prob_mutation_free_t, ptr_q,
+                     nb, h, w), shared_mem=shared_mem)
+
+        # ====== Phase 5: Scoring ======
+        n_nonroot = len(nr_self_gpu)
+        n_root = len(root_gpu)
+
+        # Non-root: 3vecdot(_U[self], U_[sib], Q[par])
+        likelihoods = cp.log(cp.zeros((n_nonroot, h), dtype=cp.float32))
+        ptr__u     = base__U + nr_self_gpu * stride
+        ptr_sib_u_ = base_U_ + nr_sib_gpu * stride
+        ptr_par_q  = base_Q  + nr_par_gpu * stride
+        block_v = (256, 1)
+        grid_v = ((h + 255) // 256, 1, n_nonroot)
+        util.batch_log_3vecdot_cuda()(
+            grid_v, block_v,
+            (ptr__u, ptr_sib_u_, ptr_par_q, likelihoods, n_nonroot, h, w))
+
+        # Root: extract U at specific genotype states
+        root_U = all_U[root_gpu]  # (n_root, h, w)
+        likelihoods_root = cp.zeros((n_root, 3, h), dtype=cp.float32)
+        likelihoods_root[:, 0, :] = root_U[:, :, self.index_gt(0, 2)]
+        likelihoods_root[:, 1, :] = root_U[:, :, self.index_gt(1, 1)]
+        likelihoods_root[:, 2, :] = root_U[:, :, self.index_gt(2, 0)]
+        likelihoods_root = likelihoods_root.reshape(n_root * 3, h)
+
+        # Combine and reduce
         likelihoods = likelihoods.reshape(len(trees), -1, h)
         likelihoods = cp.concatenate(
             [likelihoods, likelihoods_root.reshape(len(trees), -1, h)], axis=1
         )
         likelihoods = likelihoods.max(axis=1).sum(axis=-1, dtype=cp.float64)
-        return likelihoods  # , indices # (n_t,)
+        return likelihoods
 
     def calcualte_U(self, tree, probs):
         """
         Bottom-up
         """
         h, w = probs.shape[1:]
-        # print('h', h, 'w', w)
-        block_size = (32, 32)
+        block_y = min(32, w)
+        block_x = max(1, min(256 // block_y, 32))
+        block_size = (block_x, block_y)
         grid_size = (
             (h + block_size[0] - 1) // block_size[0],
             (w + block_size[1] - 1) // block_size[1],
         )
-        # print(grid_size, block_size)
+        shared_mem = w * w * 4  # sizeof(float) * k * k
         ts = 0
         for node in self.traversor(tree):
             if node.is_leaf():
@@ -402,14 +429,14 @@ class ScisTreeCNA:
                 node.U_ = cp.zeros([h, w], dtype=cp.float32)
                 node._U = cp.zeros([h, w], dtype=cp.float32)
                 util.log_matmul_cuda()(
-                    grid_size,
-                    block_size,
+                    grid_size, block_size,
                     (node.U, self.tran_prob_mutation_free, node.U_, h, w),
+                    shared_mem=shared_mem,
                 )
                 util.log_matmul_cuda()(
-                    grid_size,
-                    block_size,
+                    grid_size, block_size,
                     (node.U, self.tran_prob_mutation, node._U, h, w),
+                    shared_mem=shared_mem,
                 )
                 continue
             components = []
@@ -421,12 +448,14 @@ class ScisTreeCNA:
             node._U = cp.zeros([h, w], dtype=cp.float32)
             t = time()
             util.log_matmul_cuda()(
-                grid_size,
-                block_size,
+                grid_size, block_size,
                 (node.U, self.tran_prob_mutation_free, node.U_, h, w),
+                shared_mem=shared_mem,
             )
             util.log_matmul_cuda()(
-                grid_size, block_size, (node.U, self.tran_prob_mutation, node._U, h, w)
+                grid_size, block_size,
+                (node.U, self.tran_prob_mutation, node._U, h, w),
+                shared_mem=shared_mem,
             )
         return ts
 
@@ -514,7 +543,6 @@ class ScisTreeCNA:
         """
         # assert not hasattr(tree.root, 'U'), "tree is not empty."
         candidates = []
-        # tree.draw()
         # TODO: quartet switch
         for node in tree.get_all_nodes():
             switch = not tree[node].is_leaf()
@@ -522,7 +550,7 @@ class ScisTreeCNA:
                 if child.is_leaf():
                     switch = False
             if switch:
-                t1 = tree.copy()
+                t1 = struct_copy_tree(tree)
                 p1 = t1[node].get_children()[0]
                 p2 = t1[node].get_children()[1]
                 lc1, lc2 = p1.get_children()
@@ -534,7 +562,7 @@ class ScisTreeCNA:
                 p1.add_child(rc1)
                 p2.add_child(lc1)
                 candidates.append(t1)
-                t2 = tree.copy()
+                t2 = struct_copy_tree(tree)
                 p1 = t2[node].get_children()[0]
                 p2 = t2[node].get_children()[1]
                 lc1, lc2 = p1.get_children()
@@ -549,7 +577,7 @@ class ScisTreeCNA:
         for node in tree.get_all_nodes():
             switch = not tree[node].is_leaf() and not tree[node].is_root()
             if switch:
-                t1 = tree.copy()
+                t1 = struct_copy_tree(tree)
                 sib = t1[node].get_siblings()[0]
                 c1 = t1[node].get_children()[0]
                 c2 = t1[node].get_children()[1]
@@ -560,7 +588,7 @@ class ScisTreeCNA:
                 t1[node].parent.add_child(c1)
                 c1.set_parent(t1[node].parent)
                 candidates.append(t1)
-                t2 = tree.copy()
+                t2 = struct_copy_tree(tree)
                 sib = t2[node].get_siblings()[0]
                 c1 = t2[node].get_children()[0]
                 c2 = t2[node].get_children()[1]
@@ -571,24 +599,22 @@ class ScisTreeCNA:
                 t2[node].parent.add_child(c2)
                 c2.set_parent(t2[node].parent)
                 candidates.append(t2)
-        # local search:
-        best_tree = tree.copy()
-        best_likelihood, indicies = self.marginal_evaluate_dp(probs, best_tree.copy())
-        loader = TreeBatchLoader(candidates, batch_size=tree_batch_size)
-        # print('tree len', len(loader))
+        # local search: include base tree in the first batch to avoid separate single-tree eval
+        best_tree = struct_copy_tree(tree)
+        all_trees = [best_tree] + candidates  # base tree at index 0
+        loader = TreeBatchLoader(all_trees, batch_size=tree_batch_size)
+        best_likelihood = cp.float64(-np.inf)
         num_tree_evaulated = 0
         for bi, trees in enumerate(loader()):
-            # print(f'#batch: {bi}')
             likelihoods = self.marginal_evaluate_dp_batch(
-                probs, [_.copy() for _ in trees], batch_size=node_batch_size
+                probs, [struct_copy_tree(_) for _ in trees], batch_size=node_batch_size
             )
             num_tree_evaulated += len(trees)
-            # pbar.update(num_tree_evaulated)
             max_idx = cp.argmax(likelihoods)
             max_lh = likelihoods[max_idx]
             if max_lh > best_likelihood:
                 best_likelihood = max_lh
-                best_tree = candidates[int(bi * tree_batch_size + max_idx)]
+                best_tree = all_trees[int(bi * tree_batch_size + max_idx)]
         return best_tree, best_likelihood
 
     def nni_search_non_optim_sinlge_round(self, probs, tree):
