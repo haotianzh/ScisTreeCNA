@@ -233,6 +233,8 @@ class ScisTreeCNA:
         # print(sorted(tree.get_leaves()))
         return tree
 
+    _MAX_GRID_Z = 65535  # CUDA grid z-dimension limit
+
     def _get_block_grid(self, h, w, batch):
         """Compute optimal block/grid sizes for (h, w) matrices with batch."""
         block_y = min(32, w)
@@ -244,6 +246,44 @@ class ScisTreeCNA:
             batch,
         )
         return block_size, grid_size
+
+    def _launch_batched_matmul(self, kernel, ptr_src, mat2, ptr_dst, nb, h, w, shared_mem):
+        """Launch a batch kernel, automatically splitting if nb > MAX_GRID_Z."""
+        for off in range(0, nb, self._MAX_GRID_Z):
+            chunk = min(self._MAX_GRID_Z, nb - off)
+            block_size, grid_size = self._get_block_grid(h, w, chunk)
+            kernel(grid_size, block_size,
+                   (ptr_src[off:off+chunk], mat2, ptr_dst[off:off+chunk], chunk, h, w),
+                   shared_mem=shared_mem)
+
+    def _launch_batched_add_matmul(self, kernel, ptr_a, ptr_b, mat2, ptr_dst, nb, h, w, shared_mem):
+        """Launch fused add+matmul kernel, splitting if nb > MAX_GRID_Z."""
+        for off in range(0, nb, self._MAX_GRID_Z):
+            chunk = min(self._MAX_GRID_Z, nb - off)
+            block_size, grid_size = self._get_block_grid(h, w, chunk)
+            kernel(grid_size, block_size,
+                   (ptr_a[off:off+chunk], ptr_b[off:off+chunk], mat2, ptr_dst[off:off+chunk],
+                    chunk, h, w),
+                   shared_mem=shared_mem)
+
+    def _launch_batched_matadd(self, kernel, ptr_a, ptr_b, ptr_dst, nb, h, w):
+        """Launch batch matadd kernel, splitting if nb > MAX_GRID_Z."""
+        for off in range(0, nb, self._MAX_GRID_Z):
+            chunk = min(self._MAX_GRID_Z, nb - off)
+            block_size, grid_size = self._get_block_grid(h, w, chunk)
+            kernel(grid_size, block_size,
+                   (ptr_a[off:off+chunk], ptr_b[off:off+chunk], ptr_dst[off:off+chunk],
+                    chunk, h, w))
+
+    def _launch_batched_3vecdot(self, kernel, ptr_a, ptr_b, ptr_c, out, nb, h, w):
+        """Launch batch 3vecdot kernel, splitting if nb > MAX_GRID_Z."""
+        for off in range(0, nb, self._MAX_GRID_Z):
+            chunk = min(self._MAX_GRID_Z, nb - off)
+            block_v = (256, 1)
+            grid_v = ((h + 255) // 256, 1, chunk)
+            kernel(grid_v, block_v,
+                   (ptr_a[off:off+chunk], ptr_b[off:off+chunk], ptr_c[off:off+chunk],
+                    out[off:off+chunk], chunk, h, w))
 
     def marginal_evaluate_dp_batch(self, probs, trees, batch_size=512):
         """Evaluate all trees in batch using contiguous GPU arrays + index-based pointers.
@@ -318,6 +358,11 @@ class ScisTreeCNA:
         base__U = all__U.data.ptr
 
         # ====== Phase 3: Bottom-up (U) pass ======
+        _matmul = util.batch_log_matmul_cuda()
+        _add_matmul = util.batch_add_log_matmul_cuda()
+        _matadd = util.batch_matadd_cuda()
+        _3vecdot = util.batch_log_3vecdot_cuda()
+
         for layer_info in up_layers:
             if layer_info[0] == 'leaf':
                 _, indices, cell_ids = layer_info
@@ -326,15 +371,8 @@ class ScisTreeCNA:
                 ptr_u  = base_U  + indices * stride
                 ptr_u_ = base_U_ + indices * stride
                 ptr__u = base__U + indices * stride
-                block_size, grid_size = self._get_block_grid(h, w, nb)
-                util.batch_log_matmul_cuda()(
-                    grid_size, block_size,
-                    (ptr_u, self.tran_prob_mutation_free, ptr_u_, nb, h, w),
-                    shared_mem=shared_mem)
-                util.batch_log_matmul_cuda()(
-                    grid_size, block_size,
-                    (ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w),
-                    shared_mem=shared_mem)
+                self._launch_batched_matmul(_matmul, ptr_u, self.tran_prob_mutation_free, ptr_u_, nb, h, w, shared_mem)
+                self._launch_batched_matmul(_matmul, ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w, shared_mem)
             else:
                 _, indices, c0, c1 = layer_info
                 nb = len(indices)
@@ -343,18 +381,9 @@ class ScisTreeCNA:
                 ptr_u  = base_U  + indices * stride
                 ptr_u_ = base_U_ + indices * stride
                 ptr__u = base__U + indices * stride
-                block_size, grid_size = self._get_block_grid(h, w, nb)
-                util.batch_add_log_matmul_cuda()(
-                    grid_size, block_size,
-                    (ptr_c0_u_, ptr_c1_u_, self.tran_prob_mutation_free, ptr_u_,
-                     nb, h, w), shared_mem=shared_mem)
-                util.batch_matadd_cuda()(
-                    grid_size, block_size,
-                    (ptr_c0_u_, ptr_c1_u_, ptr_u, nb, h, w))
-                util.batch_log_matmul_cuda()(
-                    grid_size, block_size,
-                    (ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w),
-                    shared_mem=shared_mem)
+                self._launch_batched_add_matmul(_add_matmul, ptr_c0_u_, ptr_c1_u_, self.tran_prob_mutation_free, ptr_u_, nb, h, w, shared_mem)
+                self._launch_batched_matadd(_matadd, ptr_c0_u_, ptr_c1_u_, ptr_u, nb, h, w)
+                self._launch_batched_matmul(_matmul, ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w, shared_mem)
 
         # ====== Phase 4: Top-down (Q) pass ======
         all_Q = cp.zeros((total_nodes, h, w), dtype=cp.float32)
@@ -372,11 +401,7 @@ class ScisTreeCNA:
                 ptr_par_q  = base_Q  + par * stride
                 ptr_sib_u_ = base_U_ + sib * stride
                 ptr_q      = base_Q  + indices * stride
-                block_size, grid_size = self._get_block_grid(h, w, nb)
-                util.batch_add_log_matmul_cuda()(
-                    grid_size, block_size,
-                    (ptr_par_q, ptr_sib_u_, tran_prob_mutation_free_t, ptr_q,
-                     nb, h, w), shared_mem=shared_mem)
+                self._launch_batched_add_matmul(_add_matmul, ptr_par_q, ptr_sib_u_, tran_prob_mutation_free_t, ptr_q, nb, h, w, shared_mem)
 
         # ====== Phase 5: Scoring ======
         n_nonroot = len(nr_self_gpu)
@@ -387,11 +412,7 @@ class ScisTreeCNA:
         ptr__u     = base__U + nr_self_gpu * stride
         ptr_sib_u_ = base_U_ + nr_sib_gpu * stride
         ptr_par_q  = base_Q  + nr_par_gpu * stride
-        block_v = (256, 1)
-        grid_v = ((h + 255) // 256, 1, n_nonroot)
-        util.batch_log_3vecdot_cuda()(
-            grid_v, block_v,
-            (ptr__u, ptr_sib_u_, ptr_par_q, likelihoods, n_nonroot, h, w))
+        self._launch_batched_3vecdot(_3vecdot, ptr__u, ptr_sib_u_, ptr_par_q, likelihoods, n_nonroot, h, w)
 
         # Root: extract U at specific genotype states
         root_U = all_U[root_gpu]  # (n_root, h, w)
