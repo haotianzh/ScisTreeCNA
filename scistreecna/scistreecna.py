@@ -25,6 +25,75 @@ def set_cuda_device(gpu_id: int = 0) -> None:
     cp.cuda.Device(gpu_id).use()
 
 
+def estimate_batch_sizes(
+    n_cells: int,
+    n_sites: int,
+    cn_min: int = 1,
+    cn_max: int = 5,
+    gpu_id: int = 0,
+    mem_fraction: float = 0.75,
+) -> dict:
+    """Estimate optimal tree_batch_size given problem size and GPU memory.
+
+    Memory model for marginal_evaluate_dp_batch:
+        4 contiguous arrays (all_U, all_U_, all__U, all_Q), each of shape
+        (total_nodes, n_sites, N) float32, where:
+            total_nodes = tree_batch_size * (2 * n_cells - 1)
+            N = (cn_max - cn_min + 1) * (cn_max + cn_min + 2) / 2
+        plus probs array: (n_cells, n_sites, N) float32
+
+    Args:
+        n_cells:  Number of cells (leaves).
+        n_sites:  Number of loci/sites.
+        cn_min:   Minimum copy number.
+        cn_max:   Maximum copy number.
+        gpu_id:   GPU device id.
+        mem_fraction: Fraction of free GPU memory to use (default 0.75).
+
+    Returns:
+        dict with tree_batch_size, node_batch_size (deprecated, kept for compat),
+        and diagnostic info.
+    """
+    N = int((cn_max - cn_min + 1) * (cn_max + cn_min + 2) / 2)
+    nodes_per_tree = 2 * n_cells - 1
+
+    # GPU memory
+    free_mem, total_mem = cp.cuda.Device(gpu_id).mem_info
+    usable = int(free_mem * mem_fraction)
+
+    # Fixed cost: probs array
+    probs_bytes = n_cells * n_sites * N * 4
+    # Fixed cost: transition matrices, CuPy overhead, etc.
+    overhead = 256 * 1024 * 1024  # ~256MB conservative estimate
+    available = usable - probs_bytes - overhead
+
+    # Per-tree cost: 4 arrays × nodes_per_tree × n_sites × N × 4 bytes
+    bytes_per_tree = 4 * nodes_per_tree * n_sites * N * 4
+
+    tree_batch_size = max(1, available // bytes_per_tree)
+
+    # Clamp: no point exceeding total NNI candidates (~4 * n_internal_nodes)
+    max_candidates = 4 * (n_cells - 1) + 1
+    tree_batch_size = min(tree_batch_size, max_candidates)
+
+    # Also respect CUDA grid z-limit (65535) for the leaf layer
+    max_by_grid = 65535 // n_cells
+    if tree_batch_size > max_by_grid:
+        tree_batch_size = max_by_grid
+
+    info = {
+        "tree_batch_size": tree_batch_size,
+        "node_batch_size": tree_batch_size,  # kept for API compat, not used in optimized path
+        "N_states": N,
+        "nodes_per_tree": nodes_per_tree,
+        "bytes_per_tree_MB": bytes_per_tree / 1024 / 1024,
+        "gpu_free_MB": free_mem / 1024 / 1024,
+        "gpu_total_MB": total_mem / 1024 / 1024,
+        "estimated_mem_usage_MB": (probs_bytes + tree_batch_size * bytes_per_tree) / 1024 / 1024,
+    }
+    return info
+
+
 class NodeBatchLoader:
     def __init__(self, trees, batch_size):
         self.trees = trees
@@ -754,6 +823,7 @@ class ScisTreeCNA:
                         ground_truth, util.BaseTree
                     ):
                         str_log += f"\tTree accuracy: {util.tree_accuracy(ground_truth, tree):.4f}"
+                        str_log += f"\tnRF: {util.normalized_rf_distance(ground_truth, tree):.4f}"
                     if verbose:
                         if verbose_mode == "all":
                             console.log(str_log)

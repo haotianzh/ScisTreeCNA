@@ -21,6 +21,18 @@ def generalized_tree_accuracy(tree1, tree2):
     return total / total_weights
 
 
+def normalized_rf_distance(tree1, tree2):
+    """Normalized Robinson-Foulds distance between two trees.
+    RF = |S1 △ S2| / (|S1| + |S2|), where △ is symmetric difference.
+    Returns a value in [0, 1]: 0 = identical topology, 1 = completely different."""
+    splits1 = tree1.get_splits(return_label=True)
+    splits2 = tree2.get_splits(return_label=True)
+    if len(splits1) == 0 and len(splits2) == 0:
+        return 0.0
+    sym_diff = len(splits1 ^ splits2)  # frozenset symmetric difference
+    return sym_diff / (len(splits1) + len(splits2))
+
+
 def split_accuracy(splits1, splits2):
     count = 0
     for split in splits1:

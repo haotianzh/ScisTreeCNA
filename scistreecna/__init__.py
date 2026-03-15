@@ -37,6 +37,7 @@ from .scistreecna import (
     ScisTreeCNA,
     construct_genotype,
     estimate_copy_number,
+    estimate_batch_sizes,
     find_copy_gain_loss_on_branch,
     infer,
     evaluate,
