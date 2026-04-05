@@ -212,40 +212,38 @@ def struct_copy_tree(tree):
     Only copies tree structure (nodes, parent-child links, name, identifier, branch).
     Does NOT copy CuPy/numpy arrays attached to nodes."""
     old_to_new = {}
-    nodes = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
-    if isinstance(nodes, dict):
-        node_items = nodes.items()
-    else:
-        node_items = [(n.identifier, n) for n in nodes.values()] if hasattr(nodes, 'values') else [(n.identifier, n) for n in nodes]
+    node_items = tree._nodes.items()
+    _Node_new = Node.__new__
 
-    # First pass: create all new nodes
+    # First pass: create all new nodes (minimal attribute setup)
     for nid, old_node in node_items:
-        new_node = Node.__new__(Node)
-        new_node._identifier = old_node._identifier if hasattr(old_node, '_identifier') else old_node.identifier
+        new_node = _Node_new(Node)
+        new_node._identifier = old_node._identifier
         new_node.name = old_node.name
-        new_node._branch = old_node._branch if hasattr(old_node, '_branch') else getattr(old_node, 'branch', None)
+        new_node._branch = old_node._branch
         new_node.parent = None
         new_node.children = OrderedDict()
         new_node._children = []
         old_to_new[nid] = new_node
 
     # Second pass: rebuild parent-child links
+    _otn_get = old_to_new.get
     for nid, old_node in node_items:
         new_node = old_to_new[nid]
-        if old_node.parent is not None and hasattr(old_node.parent, 'identifier'):
-            pid = old_node.parent.identifier
-            if pid in old_to_new:
-                new_node.parent = old_to_new[pid]
-        children = old_node._children if hasattr(old_node, '_children') else old_node.get_children()
-        for child in children:
-            if child.identifier in old_to_new:
-                new_child = old_to_new[child.identifier]
-                new_node.children[child.identifier] = new_child
+        par = old_node.parent
+        if par is not None and hasattr(par, 'identifier'):
+            new_parent = _otn_get(par.identifier)
+            if new_parent is not None:
+                new_node.parent = new_parent
+        for child in old_node._children:
+            cid = child.identifier
+            new_child = _otn_get(cid)
+            if new_child is not None:
+                new_node.children[cid] = new_child
                 new_node._children.append(new_child)
 
     # Build new tree
     new_tree = BaseTree.__new__(BaseTree)
-    root_id = tree.root.identifier
-    new_tree.root = old_to_new[root_id]
+    new_tree.root = old_to_new[tree.root.identifier]
     new_tree._nodes = old_to_new
     return new_tree
