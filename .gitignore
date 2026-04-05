@@ -19,3 +19,15 @@ dice_tmp*
 test.jpg
 bench*
 profile*
+
+# autoresearch: include scripts, exclude data
+autoresearch/*.csv
+autoresearch/*.pkl
+autoresearch/*.txt
+autoresearch/run.log
+autoresearch/baseline.log
+# unignore autoresearch scripts
+!autoresearch/*.py
+!autoresearch/*.md
+!autoresearch/*.sh
+!autoresearch/*.tsv
