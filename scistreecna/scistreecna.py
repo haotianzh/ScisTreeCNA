@@ -371,51 +371,76 @@ class ScisTreeCNA:
                 node.tid = tid
                 idx += 1
         total_nodes = idx
+        _get = node_id_map.__getitem__
 
         # Build topological layers with pre-computed GPU index arrays
         layers_up = batch_topological_sort(trees, order="up")
         up_layers = []
         for layer in layers_up:
-            leaves = [n for n in layer if n.is_leaf()]
-            internals = [n for n in layer if not n.is_leaf()]
-            if leaves:
-                idx_l = cp.array([node_id_map[id(n)] for n in leaves], dtype=cp.int64)
-                cells = cp.array([int(n.name) for n in leaves], dtype=cp.int64)
-                up_layers.append(('leaf', idx_l, cells))
-            if internals:
-                idx_i = cp.array([node_id_map[id(n)] for n in internals], dtype=cp.int64)
-                c0 = cp.array([node_id_map[id(n.get_children()[0])] for n in internals], dtype=cp.int64)
-                c1 = cp.array([node_id_map[id(n.get_children()[1])] for n in internals], dtype=cp.int64)
-                up_layers.append(('internal', idx_i, c0, c1))
+            leaf_idx = []
+            leaf_cells = []
+            int_idx = []
+            int_c0 = []
+            int_c1 = []
+            for n in layer:
+                if n.is_leaf():
+                    leaf_idx.append(_get(id(n)))
+                    leaf_cells.append(int(n.name))
+                else:
+                    int_idx.append(_get(id(n)))
+                    ch = n._children
+                    int_c0.append(_get(id(ch[0])))
+                    int_c1.append(_get(id(ch[1])))
+            if leaf_idx:
+                up_layers.append(('leaf',
+                    cp.array(leaf_idx, dtype=cp.int64),
+                    cp.array(leaf_cells, dtype=cp.int64)))
+            if int_idx:
+                up_layers.append(('internal',
+                    cp.array(int_idx, dtype=cp.int64),
+                    cp.array(int_c0, dtype=cp.int64),
+                    cp.array(int_c1, dtype=cp.int64)))
 
         layers_down = batch_topological_sort(trees, order="down")
         down_layers = []
         for layer in layers_down:
-            roots = [n for n in layer if n.is_root()]
-            non_roots = [n for n in layer if not n.is_root()]
-            if roots:
+            has_root = False
+            nr_idx = []
+            nr_par = []
+            nr_sib = []
+            for n in layer:
+                if n.is_root():
+                    has_root = True
+                else:
+                    nr_idx.append(_get(id(n)))
+                    nr_par.append(_get(id(n.parent)))
+                    nr_sib.append(_get(id(n.get_siblings()[0])))
+            if has_root:
                 down_layers.append(('root',))
-            if non_roots:
-                idx_nr = cp.array([node_id_map[id(n)] for n in non_roots], dtype=cp.int64)
-                par = cp.array([node_id_map[id(n.parent)] for n in non_roots], dtype=cp.int64)
-                sib = cp.array([node_id_map[id(n.get_siblings()[0])] for n in non_roots], dtype=cp.int64)
-                down_layers.append(('internal', idx_nr, par, sib))
+            if nr_idx:
+                down_layers.append(('internal',
+                    cp.array(nr_idx, dtype=cp.int64),
+                    cp.array(nr_par, dtype=cp.int64),
+                    cp.array(nr_sib, dtype=cp.int64)))
 
         # Pre-compute scoring indices (all nodes, grouped by tree)
-        nr_self, nr_sib, nr_par, root_list = [], [], [], []
+        nr_self_l = []
+        nr_sib_l = []
+        nr_par_l = []
+        root_list = []
         for tid, tree in enumerate(trees):
             nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
             for nid, node in nodes_dict.items():
-                nidx = node_id_map[id(node)]
+                nidx = _get(id(node))
                 if node.is_root():
                     root_list.append(nidx)
                 else:
-                    nr_self.append(nidx)
-                    nr_sib.append(node_id_map[id(node.get_siblings()[0])])
-                    nr_par.append(node_id_map[id(node.parent)])
-        nr_self_gpu = cp.array(nr_self, dtype=cp.int64)
-        nr_sib_gpu = cp.array(nr_sib, dtype=cp.int64)
-        nr_par_gpu = cp.array(nr_par, dtype=cp.int64)
+                    nr_self_l.append(nidx)
+                    nr_sib_l.append(_get(id(node.get_siblings()[0])))
+                    nr_par_l.append(_get(id(node.parent)))
+        nr_self_gpu = cp.array(nr_self_l, dtype=cp.int64)
+        nr_sib_gpu = cp.array(nr_sib_l, dtype=cp.int64)
+        nr_par_gpu = cp.array(nr_par_l, dtype=cp.int64)
         root_gpu = cp.array(root_list, dtype=cp.int64)
 
         # ====== Phase 2: Allocate contiguous GPU arrays (single allocation) ======

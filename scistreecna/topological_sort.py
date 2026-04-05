@@ -2,17 +2,18 @@ from . import util
 
 
 def batch_topological_sort(trees, order="up"):
-    sorted_trees = []
-    for tree in trees:
-        sorted_trees.append(topological_sort(tree, order=order))
+    sorted_trees = [topological_sort(tree, order=order) for tree in trees]
     merged_layers = []
-    while sorted_trees:
+    remaining = len(sorted_trees)
+    layer_idx = 0
+    while remaining > 0:
         layer = []
-        for tree in sorted_trees:
-            if tree:
-                layer += tree.pop(0)
-            else:
-                sorted_trees.remove(tree)
+        for st in sorted_trees:
+            if layer_idx < len(st):
+                layer += st[layer_idx]
+            elif layer_idx == len(st):
+                remaining -= 1
+        layer_idx += 1
         if layer:
             merged_layers.append(layer)
     return merged_layers
