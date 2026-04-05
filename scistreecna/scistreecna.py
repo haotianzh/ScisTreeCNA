@@ -362,6 +362,11 @@ class ScisTreeCNA:
         stride = h * w * 4  # bytes per (h, w) float32 slice
 
         # ====== Phase 1: Pre-compute topology (one-time Python work) ======
+        def _sibling(n):
+            """Fast sibling lookup for binary trees (avoids get_siblings() list creation)."""
+            pc = n.parent._children
+            return pc[1] if pc[0] is n else pc[0]
+
         node_id_map = {}  # id(node) -> flat index
         idx = 0
         for tid, tree in enumerate(trees):
@@ -414,7 +419,7 @@ class ScisTreeCNA:
                 else:
                     nr_idx.append(_get(id(n)))
                     nr_par.append(_get(id(n.parent)))
-                    nr_sib.append(_get(id(n.get_siblings()[0])))
+                    nr_sib.append(_get(id(_sibling(n))))
             if has_root:
                 down_layers.append(('root',))
             if nr_idx:
@@ -436,7 +441,7 @@ class ScisTreeCNA:
                     root_list.append(nidx)
                 else:
                     nr_self_l.append(nidx)
-                    nr_sib_l.append(_get(id(node.get_siblings()[0])))
+                    nr_sib_l.append(_get(id(_sibling(node))))
                     nr_par_l.append(_get(id(node.parent)))
         nr_self_gpu = cp.array(nr_self_l, dtype=cp.int64)
         nr_sib_gpu = cp.array(nr_sib_l, dtype=cp.int64)
