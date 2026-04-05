@@ -378,7 +378,8 @@ class ScisTreeCNA:
         total_nodes = idx
         _get = node_id_map.__getitem__
 
-        # Build topological layers with pre-computed GPU index arrays
+        # Build topological layers with pre-computed index arrays (numpy first, then GPU)
+        _np_int64 = np.int64
         layers_up = batch_topological_sort(trees, order="up")
         up_layers = []
         for layer in layers_up:
@@ -398,13 +399,13 @@ class ScisTreeCNA:
                     int_c1.append(_get(id(ch[1])))
             if leaf_idx:
                 up_layers.append(('leaf',
-                    cp.array(leaf_idx, dtype=cp.int64),
-                    cp.array(leaf_cells, dtype=cp.int64)))
+                    cp.asarray(np.array(leaf_idx, dtype=_np_int64)),
+                    cp.asarray(np.array(leaf_cells, dtype=_np_int64))))
             if int_idx:
                 up_layers.append(('internal',
-                    cp.array(int_idx, dtype=cp.int64),
-                    cp.array(int_c0, dtype=cp.int64),
-                    cp.array(int_c1, dtype=cp.int64)))
+                    cp.asarray(np.array(int_idx, dtype=_np_int64)),
+                    cp.asarray(np.array(int_c0, dtype=_np_int64)),
+                    cp.asarray(np.array(int_c1, dtype=_np_int64))))
 
         layers_down = batch_topological_sort(trees, order="down")
         down_layers = []
@@ -424,9 +425,9 @@ class ScisTreeCNA:
                 down_layers.append(('root',))
             if nr_idx:
                 down_layers.append(('internal',
-                    cp.array(nr_idx, dtype=cp.int64),
-                    cp.array(nr_par, dtype=cp.int64),
-                    cp.array(nr_sib, dtype=cp.int64)))
+                    cp.asarray(np.array(nr_idx, dtype=_np_int64)),
+                    cp.asarray(np.array(nr_par, dtype=_np_int64)),
+                    cp.asarray(np.array(nr_sib, dtype=_np_int64))))
 
         # Pre-compute scoring indices (all nodes, grouped by tree)
         nr_self_l = []
@@ -443,10 +444,10 @@ class ScisTreeCNA:
                     nr_self_l.append(nidx)
                     nr_sib_l.append(_get(id(_sibling(node))))
                     nr_par_l.append(_get(id(node.parent)))
-        nr_self_gpu = cp.array(nr_self_l, dtype=cp.int64)
-        nr_sib_gpu = cp.array(nr_sib_l, dtype=cp.int64)
-        nr_par_gpu = cp.array(nr_par_l, dtype=cp.int64)
-        root_gpu = cp.array(root_list, dtype=cp.int64)
+        nr_self_gpu = cp.asarray(np.array(nr_self_l, dtype=_np_int64))
+        nr_sib_gpu = cp.asarray(np.array(nr_sib_l, dtype=_np_int64))
+        nr_par_gpu = cp.asarray(np.array(nr_par_l, dtype=_np_int64))
+        root_gpu = cp.asarray(np.array(root_list, dtype=_np_int64))
 
         # ====== Phase 2: Allocate contiguous GPU arrays (single allocation) ======
         _buf3 = cp.zeros((3 * total_nodes, h, w), dtype=cp.float32)
