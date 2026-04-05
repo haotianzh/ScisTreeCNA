@@ -535,53 +535,86 @@ class ScisTreeCNA:
 
     def calcualte_U(self, tree, probs):
         """
-        Bottom-up
+        Bottom-up — optimized using contiguous arrays + batched kernels (same as batch version).
+        Still stores results on nodes for compatibility with calculate_Q and marginal_evaluate_dp.
         """
         h, w = probs.shape[1:]
-        block_y = min(32, w)
-        block_x = max(1, min(256 // block_y, 32))
-        block_size = (block_x, block_y)
-        grid_size = (
-            (h + block_size[0] - 1) // block_size[0],
-            (w + block_size[1] - 1) // block_size[1],
-        )
-        shared_mem = w * w * 4  # sizeof(float) * k * k
-        ts = 0
-        for node in self.traversor(tree):
-            if node.is_leaf():
-                node.U = probs[int(node.name)].astype(cp.float32)
-                node.U_ = cp.zeros([h, w], dtype=cp.float32)
-                node._U = cp.zeros([h, w], dtype=cp.float32)
-                util.log_matmul_cuda()(
-                    grid_size, block_size,
-                    (node.U, self.tran_prob_mutation_free, node.U_, h, w),
-                    shared_mem=shared_mem,
-                )
-                util.log_matmul_cuda()(
-                    grid_size, block_size,
-                    (node.U, self.tran_prob_mutation, node._U, h, w),
-                    shared_mem=shared_mem,
-                )
-                continue
-            components = []
-            for child in node.get_children():
-                components.append(child.U_)
-            components = cp.array(components)
-            node.U = cp.sum(components, axis=0)
-            node.U_ = cp.zeros([h, w], dtype=cp.float32)
-            node._U = cp.zeros([h, w], dtype=cp.float32)
-            t = time()
-            util.log_matmul_cuda()(
-                grid_size, block_size,
-                (node.U, self.tran_prob_mutation_free, node.U_, h, w),
-                shared_mem=shared_mem,
-            )
-            util.log_matmul_cuda()(
-                grid_size, block_size,
-                (node.U, self.tran_prob_mutation, node._U, h, w),
-                shared_mem=shared_mem,
-            )
-        return ts
+        shared_mem = w * w * 4
+        stride = h * w * 4
+
+        # Build topology
+        node_id_map = {}
+        node_list = []
+        idx = 0
+        nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
+        for nid, node in nodes_dict.items():
+            node_id_map[id(node)] = idx
+            node_list.append(node)
+            idx += 1
+        total_nodes = idx
+        _get = node_id_map.__getitem__
+
+        def _sibling(n):
+            pc = n.parent._children
+            return pc[1] if pc[0] is n else pc[0]
+
+        # Topological sort (single tree)
+        from .topological_sort import topological_sort
+        layers_up = topological_sort(tree, order="up")
+
+        # Contiguous arrays
+        _buf = cp.zeros((3 * total_nodes, h, w), dtype=cp.float32)
+        all_U  = _buf[0*total_nodes:1*total_nodes]
+        all_U_ = _buf[1*total_nodes:2*total_nodes]
+        all__U = _buf[2*total_nodes:3*total_nodes]
+        base_U  = all_U.data.ptr
+        base_U_ = all_U_.data.ptr
+        base__U = all__U.data.ptr
+
+        _matmul = util.batch_log_matmul_cuda()
+        _add_matmul = util.batch_add_log_matmul_cuda()
+        _matadd = util.batch_matadd_cuda()
+        _np_int64 = np.int64
+
+        for layer in layers_up:
+            leaves = [n for n in layer if n.is_leaf()]
+            internals = [n for n in layer if not n.is_leaf()]
+            if leaves:
+                idx_l = np.array([_get(id(n)) for n in leaves], dtype=_np_int64)
+                cells = np.array([int(n.name) for n in leaves], dtype=_np_int64)
+                indices = cp.asarray(idx_l)
+                cell_ids = cp.asarray(cells)
+                nb = len(indices)
+                all_U[indices] = probs[cell_ids]
+                ptr_u  = base_U  + indices * stride
+                ptr_u_ = base_U_ + indices * stride
+                ptr__u = base__U + indices * stride
+                self._launch_batched_matmul(_matmul, ptr_u, self.tran_prob_mutation_free, ptr_u_, nb, h, w, shared_mem)
+                self._launch_batched_matmul(_matmul, ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w, shared_mem)
+            if internals:
+                idx_i = np.array([_get(id(n)) for n in internals], dtype=_np_int64)
+                c0 = np.array([_get(id(n._children[0])) for n in internals], dtype=_np_int64)
+                c1 = np.array([_get(id(n._children[1])) for n in internals], dtype=_np_int64)
+                indices = cp.asarray(idx_i)
+                c0_gpu = cp.asarray(c0)
+                c1_gpu = cp.asarray(c1)
+                nb = len(indices)
+                ptr_c0_u_ = base_U_ + c0_gpu * stride
+                ptr_c1_u_ = base_U_ + c1_gpu * stride
+                ptr_u  = base_U  + indices * stride
+                ptr_u_ = base_U_ + indices * stride
+                ptr__u = base__U + indices * stride
+                self._launch_batched_add_matmul(_add_matmul, ptr_c0_u_, ptr_c1_u_, self.tran_prob_mutation_free, ptr_u_, nb, h, w, shared_mem)
+                self._launch_batched_matadd(_matadd, ptr_c0_u_, ptr_c1_u_, ptr_u, nb, h, w)
+                self._launch_batched_matmul(_matmul, ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w, shared_mem)
+
+        # Copy results back to node attributes for compatibility
+        for node in node_list:
+            nidx = _get(id(node))
+            node.U  = all_U[nidx]
+            node.U_ = all_U_[nidx]
+            node._U = all__U[nidx]
+        return 0
 
     def calculate_Q(self, tree):
         """
