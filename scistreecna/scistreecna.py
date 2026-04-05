@@ -424,6 +424,7 @@ class ScisTreeCNA:
                     cp.asarray(np.array(int_c1, dtype=_np_int64))))
 
         # Derive down-pass layers by reversing raw up-pass layers (avoids second topo sort)
+        # Skip leaf nodes: Q[leaf] is never read (leaves have no children, scoring uses Q[parent])
         down_layers = []
         for layer in reversed(layers_up):
             nr_idx = []
@@ -433,7 +434,7 @@ class ScisTreeCNA:
             for n in layer:
                 if n.is_root():
                     has_root = True
-                else:
+                elif not n.is_leaf():  # skip leaves — their Q is never used
                     nr_idx.append(_get(id(n)))
                     nr_par.append(_get(id(n.parent)))
                     nr_sib.append(_get(id(_sibling(n))))
