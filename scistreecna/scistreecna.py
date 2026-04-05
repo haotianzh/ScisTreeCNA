@@ -698,64 +698,74 @@ class ScisTreeCNA:
         """
         NNI neighbor
         """
-        # assert not hasattr(tree.root, 'U'), "tree is not empty."
         candidates = []
-        # TODO: quartet switch
-        for node in tree.get_all_nodes():
-            switch = not tree[node].is_leaf()
-            for child in tree[node].get_children():
-                if child.is_leaf():
-                    switch = False
-            if switch:
-                t1 = struct_copy_tree(tree)
-                p1 = t1[node].get_children()[0]
-                p2 = t1[node].get_children()[1]
-                lc1, lc2 = p1.get_children()
-                rc1, rc2 = p2.get_children()
-                p1.remove_child(lc1)
-                p2.remove_child(rc1)
-                lc1.set_parent(p2)
-                rc1.set_parent(p1)
-                p1.add_child(rc1)
-                p2.add_child(lc1)
-                candidates.append(t1)
-                t2 = struct_copy_tree(tree)
-                p1 = t2[node].get_children()[0]
-                p2 = t2[node].get_children()[1]
-                lc1, lc2 = p1.get_children()
-                rc1, rc2 = p2.get_children()
-                p1.remove_child(lc1)
-                p2.remove_child(rc2)
-                lc1.set_parent(p2)
-                rc2.set_parent(p1)
-                p1.add_child(rc2)
-                p2.add_child(lc1)
-                candidates.append(t2)
-        for node in tree.get_all_nodes():
-            switch = not tree[node].is_leaf() and not tree[node].is_root()
-            if switch:
-                t1 = struct_copy_tree(tree)
-                sib = t1[node].get_siblings()[0]
-                c1 = t1[node].get_children()[0]
-                c2 = t1[node].get_children()[1]
-                t1[node].remove_child(c1)
-                t1[node].parent.remove_child(sib)
-                t1[node].add_child(sib)
-                sib.set_parent(t1[node])
-                t1[node].parent.add_child(c1)
-                c1.set_parent(t1[node].parent)
-                candidates.append(t1)
-                t2 = struct_copy_tree(tree)
-                sib = t2[node].get_siblings()[0]
-                c1 = t2[node].get_children()[0]
-                c2 = t2[node].get_children()[1]
-                t2[node].remove_child(c2)
-                t2[node].parent.remove_child(sib)
-                t2[node].add_child(sib)
-                sib.set_parent(t2[node])
-                t2[node].parent.add_child(c2)
-                c2.set_parent(t2[node].parent)
-                candidates.append(t2)
+        # Pre-collect node identifiers for quartet and triplet swaps
+        nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
+        quartet_nodes = []  # nodes where both children are internal
+        triplet_nodes = []  # non-root, non-leaf nodes
+        for nid, nd in nodes_dict.items():
+            if nd.is_leaf():
+                continue
+            ch = nd._children
+            if len(ch) == 2 and not ch[0].is_leaf() and not ch[1].is_leaf():
+                quartet_nodes.append(nid)
+            if not nd.is_root():
+                triplet_nodes.append(nid)
+
+        # Quartet swaps
+        _copy = struct_copy_tree
+        for nid in quartet_nodes:
+            t1 = _copy(tree)
+            p1, p2 = t1[nid]._children
+            lc1, lc2 = p1._children
+            rc1, rc2 = p2._children
+            p1.remove_child(lc1)
+            p2.remove_child(rc1)
+            lc1.set_parent(p2)
+            rc1.set_parent(p1)
+            p1.add_child(rc1)
+            p2.add_child(lc1)
+            candidates.append(t1)
+            t2 = _copy(tree)
+            p1, p2 = t2[nid]._children
+            lc1, lc2 = p1._children
+            rc1, rc2 = p2._children
+            p1.remove_child(lc1)
+            p2.remove_child(rc2)
+            lc1.set_parent(p2)
+            rc2.set_parent(p1)
+            p1.add_child(rc2)
+            p2.add_child(lc1)
+            candidates.append(t2)
+
+        # Triplet swaps
+        for nid in triplet_nodes:
+            t1 = _copy(tree)
+            nd = t1[nid]
+            par = nd.parent
+            pc = par._children
+            sib = pc[1] if pc[0] is nd else pc[0]
+            c1, c2 = nd._children
+            nd.remove_child(c1)
+            par.remove_child(sib)
+            nd.add_child(sib)
+            sib.set_parent(nd)
+            par.add_child(c1)
+            c1.set_parent(par)
+            candidates.append(t1)
+            t2 = _copy(tree)
+            nd = t2[nid]
+            par = nd.parent
+            pc = par._children
+            sib = pc[1] if pc[0] is nd else pc[0]
+            c1, c2 = nd._children
+            nd.remove_child(c2)
+            par.remove_child(sib)
+            nd.add_child(sib)
+            sib.set_parent(nd)
+            par.add_child(c2)
+            c2.set_parent(par)
+            candidates.append(t2)
         # local search: include base tree in the first batch to avoid separate single-tree eval
         best_tree = struct_copy_tree(tree)
         all_trees = [best_tree] + candidates  # base tree at index 0
