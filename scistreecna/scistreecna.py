@@ -368,6 +368,10 @@ class ScisTreeCNA:
             return pc[1] if pc[0] is n else pc[0]
 
         node_id_map = {}  # id(node) -> flat index
+        nr_self_l = []
+        nr_sib_l = []
+        nr_par_l = []
+        root_list = []
         idx = 0
         for tid, tree in enumerate(trees):
             nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
@@ -377,6 +381,18 @@ class ScisTreeCNA:
                 idx += 1
         total_nodes = idx
         _get = node_id_map.__getitem__
+
+        # Build scoring indices in single pass (merged with id_map)
+        for tid, tree in enumerate(trees):
+            nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
+            for nid, node in nodes_dict.items():
+                nidx = _get(id(node))
+                if node.is_root():
+                    root_list.append(nidx)
+                else:
+                    nr_self_l.append(nidx)
+                    nr_sib_l.append(_get(id(_sibling(node))))
+                    nr_par_l.append(_get(id(node.parent)))
 
         # Build topological layers with pre-computed index arrays (numpy first, then GPU)
         _np_int64 = np.int64
@@ -409,7 +425,7 @@ class ScisTreeCNA:
 
         # Derive down-pass layers by reversing raw up-pass layers (avoids second topo sort)
         down_layers = []
-        for layer in reversed(layers_up):  # layers_up is the raw topo sort result
+        for layer in reversed(layers_up):
             nr_idx = []
             nr_par = []
             nr_sib = []
@@ -429,21 +445,6 @@ class ScisTreeCNA:
                     cp.asarray(np.array(nr_par, dtype=_np_int64)),
                     cp.asarray(np.array(nr_sib, dtype=_np_int64))))
 
-        # Pre-compute scoring indices (all nodes, grouped by tree)
-        nr_self_l = []
-        nr_sib_l = []
-        nr_par_l = []
-        root_list = []
-        for tid, tree in enumerate(trees):
-            nodes_dict = tree._nodes if hasattr(tree, '_nodes') else tree.get_all_nodes()
-            for nid, node in nodes_dict.items():
-                nidx = _get(id(node))
-                if node.is_root():
-                    root_list.append(nidx)
-                else:
-                    nr_self_l.append(nidx)
-                    nr_sib_l.append(_get(id(_sibling(node))))
-                    nr_par_l.append(_get(id(node.parent)))
         nr_self_gpu = cp.asarray(np.array(nr_self_l, dtype=_np_int64))
         nr_sib_gpu = cp.asarray(np.array(nr_sib_l, dtype=_np_int64))
         nr_par_gpu = cp.asarray(np.array(nr_par_l, dtype=_np_int64))
