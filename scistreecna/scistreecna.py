@@ -418,10 +418,11 @@ class ScisTreeCNA:
         nr_par_gpu = cp.array(nr_par, dtype=cp.int64)
         root_gpu = cp.array(root_list, dtype=cp.int64)
 
-        # ====== Phase 2: Allocate contiguous GPU arrays ======
-        all_U  = cp.zeros((total_nodes, h, w), dtype=cp.float32)
-        all_U_ = cp.zeros((total_nodes, h, w), dtype=cp.float32)
-        all__U = cp.zeros((total_nodes, h, w), dtype=cp.float32)
+        # ====== Phase 2: Allocate contiguous GPU arrays (single allocation) ======
+        _buf3 = cp.zeros((3 * total_nodes, h, w), dtype=cp.float32)
+        all_U  = _buf3[0*total_nodes:1*total_nodes]
+        all_U_ = _buf3[1*total_nodes:2*total_nodes]
+        all__U = _buf3[2*total_nodes:3*total_nodes]
         base_U  = all_U.data.ptr
         base_U_ = all_U_.data.ptr
         base__U = all__U.data.ptr
