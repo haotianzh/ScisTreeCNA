@@ -697,7 +697,7 @@ class ScisTreeCNA:
         num_tree_evaulated = 0
         for bi, trees in enumerate(loader()):
             likelihoods = self.marginal_evaluate_dp_batch(
-                probs, [struct_copy_tree(_) for _ in trees], batch_size=node_batch_size
+                probs, trees, batch_size=node_batch_size
             )
             num_tree_evaulated += len(trees)
             max_idx = cp.argmax(likelihoods)
