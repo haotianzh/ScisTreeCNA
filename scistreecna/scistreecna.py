@@ -407,13 +407,13 @@ class ScisTreeCNA:
                     cp.asarray(np.array(int_c0, dtype=_np_int64)),
                     cp.asarray(np.array(int_c1, dtype=_np_int64))))
 
-        layers_down = batch_topological_sort(trees, order="down")
+        # Derive down-pass layers by reversing raw up-pass layers (avoids second topo sort)
         down_layers = []
-        for layer in layers_down:
-            has_root = False
+        for layer in reversed(layers_up):  # layers_up is the raw topo sort result
             nr_idx = []
             nr_par = []
             nr_sib = []
+            has_root = False
             for n in layer:
                 if n.is_root():
                     has_root = True
