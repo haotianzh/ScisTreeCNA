@@ -60,6 +60,8 @@ def read_vcf(vcf_filepath, key="AD"):
             site_ad_data = []
             for sample_gt_str in parts[9:]:
                 ref_reads, alt_reads = 0, 0
+                # locate this sample's AD subfield (same position as `key` in FORMAT);
+                # AD is encoded as "ref,alt,cn" and '.' marks missing data
                 gt_fields = sample_gt_str.split(":")
                 if ad_index < len(gt_fields):
                     ad_value_str = gt_fields[ad_index]
@@ -76,47 +78,60 @@ def read_vcf(vcf_filepath, key="AD"):
 
 def convert_2d_string_array_to_3d(input_2d_array):
     """
-    Converts a 2D array (list of lists) of strings formatted as 'ref_counts|alt_counts|copy_number'
-    back into a 3D NumPy array of shape (rows, cols, 2).
+    Converts a 2D array of strings into a 3D NumPy array.
 
-    Args:
-        input_2d_array (list): A 2D list of strings, where each string is 'ref_counts|alt_counts|copy_number'.
+    Two cell formats are supported (and must be used consistently across the file):
+      - Total copy number:      'ref|alt|cn'           -> last dim of size 3 (ref, alt, cn)
+      - Allele-specific copies:  'ref|alt|cn_maj|cn_min'-> last dim of size 4 (ref, alt, cn_maj, cn_min)
+
+    Missing values are encoded with '.' and mapped to 0 (reads) or -1 (copy numbers).
 
     Returns:
-        np.ndarray: A 3D NumPy array with the last dimension being of size 2.
-                    Returns an empty array if the input list is empty.
+        np.ndarray: shape (rows, cols, 3) for total-CN input or (rows, cols, 4) for
+                    allele-specific input. Empty input returns an empty array.
     """
     num_rows = len(input_2d_array)
     num_cols = len(input_2d_array[0]) if num_rows > 0 else 0
-    result_3d_array = np.empty((num_rows, num_cols, 3), dtype=object)
+    if num_rows == 0 or num_cols == 0:
+        return np.empty((num_rows, num_cols, 3), dtype=object)
+
+    width = len(str(input_2d_array[0][0]).split("|"))
+    if width not in (3, 4):
+        raise Exception("Invalid format in .csv file.")
+    result_3d_array = np.empty((num_rows, num_cols, width), dtype=object)
 
     for i in range(num_rows):
         for j in range(num_cols):
-            parts = input_2d_array[i][j].split("|")
-            if len(parts) == 3:
-                x_val = parts[0]
-                y_val = parts[1]
-                z_val = parts[2]
-                ref_cnt, alt_cnt, copy_num = process_missing_values(x_val, y_val, z_val)
+            parts = str(input_2d_array[i][j]).split("|")
+            if len(parts) != width:
+                raise Exception(
+                    "Inconsistent format in .csv file: mixing total and allele-specific entries."
+                )
+            if width == 3:
+                ref_cnt, alt_cnt, copy_num = process_missing_values(parts[0], parts[1], parts[2])
                 result_3d_array[i, j] = [ref_cnt, alt_cnt, copy_num]
             else:
-                raise Exception("Invalid format in .csv file.")
+                ref_cnt, alt_cnt, cn_maj, cn_min = process_missing_values_allele(
+                    parts[0], parts[1], parts[2], parts[3]
+                )
+                result_3d_array[i, j] = [ref_cnt, alt_cnt, cn_maj, cn_min]
     return result_3d_array
 
 
 def read_csv(csv_filepath, reads=True):
     """
-    Reads a CSV file.
+    Read an input CSV matrix (rows=sites, cols=cells; first column is the index).
+    Each cell is a '|'-delimited string 'ref|alt|cn' or 'ref|alt|cn_maj|cn_min'.
+
     Args:
         csv_filepath (str): The path to the CSV file.
+        reads (bool): If True, parse the string matrix into a 3D numeric array via
+            convert_2d_string_array_to_3d; if False, return the raw string values.
 
     Returns:
-        tuple[list[str], list[list[tuple[int | None, int | None]]]]:
-            A tuple containing:
-            - A matrix (list of lists) where each inner list represents a variant site,
-              and each element in the inner list is a tuple (ref_reads, alt_reads).
-            - A list of sample names.
-            - A list of site names.
+        tuple: (matrix, sample_names, site_names) where matrix is the parsed
+            (sites, cells, 3 or 4) array (or raw values when reads=False), and
+            sample/site names come from the CSV header and index.
     """
     assert os.path.exists(
         csv_filepath
@@ -132,11 +147,26 @@ def read_csv(csv_filepath, reads=True):
 
 
 def process_missing_values(ref_cnt, alt_cnt, copy_num):
+    """Normalize a single total-CN entry's missing values and cast to int.
+    Missing reads ('.') -> 0; missing copy number ('.') -> -1.
+    Returns (ref_cnt, alt_cnt, copy_num) as ints."""
     if ref_cnt == '.' and alt_cnt == '.':   # reads missed
         ref_cnt, alt_cnt = 0, 0
     if copy_num == '.': # cn missed
         copy_num = -1
     return int(ref_cnt), int(alt_cnt), int(copy_num)
+
+
+def process_missing_values_allele(ref_cnt, alt_cnt, cn_maj, cn_min):
+    """Normalize a single allele-specific entry's missing values and cast to int.
+    Missing reads ('.') -> 0; if either major/minor copy number is '.', both are
+    set to -1. Returns (ref_cnt, alt_cnt, cn_maj, cn_min) as ints."""
+    if ref_cnt == '.' and alt_cnt == '.':   # reads missed
+        ref_cnt, alt_cnt = 0, 0
+    # allele-specific copy number missing iff either allele is '.'
+    if cn_maj == '.' or cn_min == '.':
+        cn_maj, cn_min = -1, -1
+    return int(ref_cnt), int(alt_cnt), int(cn_maj), int(cn_min)
 
 
 if __name__ == "__main__":

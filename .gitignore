@@ -20,6 +20,14 @@ test.jpg
 bench*
 profile*
 
+build/
+experiments/
+tutorials/demo_cn_loh.py
+*.log
+profile*
+*.pdf
+CLAUDE.md
+scsim*
 # autoresearch: include scripts, exclude data
 autoresearch/*.csv
 autoresearch/*.pkl

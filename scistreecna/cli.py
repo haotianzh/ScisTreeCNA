@@ -6,6 +6,13 @@ from .scistreecna import infer, console
 from . import util
 
 def main():
+    """Console entry point for the `scistreecna` command.
+
+    Parses CLI args, loads a reads CSV via util.read_csv, runs scistreecna.infer
+    with the given hyperparameters, and writes `{prefix}_tree.txt` (Newick) and
+    `{prefix}_genotype.txt` (tab-separated integer genotype matrix). Returns 0 on
+    success; exits non-zero on missing input or load/inference errors.
+    """
     parser = argparse.ArgumentParser(
         description="CLI for ScisTreeCNA inference."
     )

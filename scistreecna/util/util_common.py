@@ -56,7 +56,8 @@ def log_matmul(logA, logB):
     """
     # logA has shape (N, p, p)
     # logB has shape (N, p, p)
-    # Compute log(A @ B) using broadcasting
+    # Compute log(A @ B): broadcast to (N, i, contract-axis, j), add in log space
+    # (= multiply), then logsumexp over the shared contraction axis (axis=2).
     product = logsumexp(logA[:, :, :, cp.newaxis] + logB[:, cp.newaxis, :, :], axis=2)
     return product
 
@@ -98,6 +99,11 @@ def cpu_time(func):
 
 @cpu_time
 def neighbor_joining_np(disMatrix):
+    """
+    Older numpy implementation of neighbor-joining (Saitou & Nei, 1987).
+    Builds a tree from an (n x n) additive distance matrix and returns it via
+    util.from_node(root). See `neighbor_joining` for the newer CuPy version.
+    """
     import numpy as np
 
     D = np.array(disMatrix, dtype=float)
@@ -214,6 +220,8 @@ def neighbor_joining(disMatrix):
         if size == 2:
             break
 
+        # NJ matrix D*: D1[i,j] = (n-2)*D[i,j] - totalDist[i] - totalDist[j];
+        # its minimum off-diagonal entry yields the pair of neighbors to merge.
         totalDist = cp.sum(D, axis=0)
         D1 = (size - 2) * D - totalDist - totalDist.reshape((size, 1))
         cp.fill_diagonal(D1, 0.0)
@@ -222,9 +230,11 @@ def neighbor_joining(disMatrix):
         j = int(index % size)
         if i > j:
             i, j = j, i
+        # branch lengths from the merged pair (i, j) to the new internal node.
         delta = (totalDist[i] - totalDist[j]) / (size - 2)
         li = (D[i, j] + delta) / 2
         lj = (D[i, j] - delta) / 2
+        # distances from the new node to every remaining leaf, then drop i, j.
         d_new = (D[i, :] + D[j, :] - D[i, j]) / 2
         d_new = cp.delete(d_new, [i, j])
         d_new = cp.append(d_new, 0.0)
@@ -251,6 +261,7 @@ def neighbor_joining(disMatrix):
 
 
 def scan_for_deletion(genotype):
+    """Return indices of sites whose genotype calls contain a deletion ('-')."""
     sites = []
     for i in range(genotype.shape[1]):
         for gt in genotype[i].unique():
@@ -260,6 +271,8 @@ def scan_for_deletion(genotype):
 
 
 def on_branch(leaves, cells):
+    """True iff `leaves` and `cells` are the same set (a node's leaf set exactly
+    matches the deletion-affected cells, i.e. the deletion sits on that branch)."""
     # if leaves == cells
     if len(leaves) != len(cells):
         return False
@@ -270,6 +283,11 @@ def on_branch(leaves, cells):
 
 
 def find_deletion_on_tree(tree, geno, reads, del_site, verbose=False):
+    """
+    Locate where the deletion at `del_site` falls on `tree`: annotate each node's
+    `.event` string and mark the branch (and its descendants) whose leaf set equals
+    the deletion-affected cells with [DEL]. Returns the annotated tree copy.
+    """
     # print('Delete site', del_site)
     DEL = "DEL"
     OK = "OK"
@@ -297,6 +315,7 @@ def find_deletion_on_tree(tree, geno, reads, del_site, verbose=False):
 
 
 def to_numpy(x):
+    """Move a CuPy array (or a dict of CuPy arrays) to host numpy via .get()."""
     if isinstance(x, cp.ndarray):
         return x.get()
     if isinstance(x, dict):
@@ -342,6 +361,11 @@ def to_numpy(x):
 
 
 def pairwise_distance_matrix(probs):
+    """
+    Expected pairwise cell distance from per-cell genotype log-probs.
+    probs: (ncell, nsite, num_states) log-probabilities. Returns (ncell, ncell)
+    where D[i,j] = sum over (site,state) of P_i * (1 - P_j) (mismatch probability).
+    """
     ncell, nsite, num_states = probs.shape
     exp_probs = cp.exp(probs)
     expected_distances = cp.einsum("ipq,jpq->ij", exp_probs, 1 - exp_probs)
@@ -350,6 +374,10 @@ def pairwise_distance_matrix(probs):
 
 
 def ggeno_to_bgeno(genotype):
+    """
+    Collapse full (g0, g1) genotypes to a binary genotype: value is g1 (#mutant
+    copies) clamped to {0, 1}, with -1 marking the (0, 0) no-copy state.
+    """
     bgeno = genotype[:, :, 1]
     mask = (genotype[:, :, 0] == 0) & (genotype[:, :, 1] == 0)
     bgeno[bgeno > 1] = 1
@@ -359,6 +387,8 @@ def ggeno_to_bgeno(genotype):
 
 
 def random_reads(n_leaves=10, n_sites=1):
+    """Generate a random (n_sites, n_leaves) array of (ref, alt, cn) read tuples
+    for testing."""
     reads = []
     for site in range(n_sites):
         read = []
@@ -379,8 +409,10 @@ def random_reads(n_leaves=10, n_sites=1):
 
 
 def get_default_cell_names(n_cells):
+    """Default cell names: ['c0', 'c1', ..., 'c{n_cells-1}']."""
     return [f"c{i}" for i in range(n_cells)]
 
 
 def get_default_site_names(n_sites):
+    """Default site names: ['s0', 's1', ..., 's{n_sites-1}']."""
     return [f"s{i}" for i in range(n_sites)]

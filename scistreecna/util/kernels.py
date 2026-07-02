@@ -1,6 +1,29 @@
 import cupy as cp
 
 
+# =============================================================================
+# Genotype-likelihood kernels.
+# Each computes, per (cell, site) pair (one CUDA thread = one tid = one cell-site),
+# the log P(reads | genotype) for every genotype state and writes an N-vector to
+# `out`. Everything is in LOG SPACE; NEG_INF (= log 0) is expected and normal.
+#
+# Genotype (g0, g1) = (#wild-type-base copies, #mutant-base copies). The per-state
+# index is the lower-triangular packing of (g0+g1, g0):
+#   index = (g0+g1)(g0+g1+1)/2 + g0 - CN_MIN(CN_MIN+1)/2
+# Model: binomial reads with allelic dropout (ado) + sequencing error (seqerr),
+# marginalized over surviving copies (g0_, g1_), plus a copy-number-noise term
+# P(observed_cn | total) = (1-cn_err)*1[match] + cn_err*Poisson.
+#
+# Of the variants below, ONLY `kernel_log_probability_cn_noise` is LIVE (returned
+# by the compute_genotype_log_probs_cn_noise() wrapper). The others
+# (kernel_log_probability, *_with_zero_copy, *_original, *2) are ALTERNATE /
+# COMMENTED-OUT versions kept for reference and are not used at runtime.
+# =============================================================================
+
+# ALTERNATE (not live): SNV-only genotype likelihood, no copy-number-noise term.
+# Requires g0+g1 == observed copy number; normalizes each (cell,site) output to a
+# log-probability distribution (subtracts logZ via two-pass log-sum-exp).
+# In/out: ref/alt/cn (ncell*nsite), afs (nsite), out (ncell*nsite*N).
 kernel_log_probability = r"""
 extern "C" __global__
 void compute_genotype_log_probs(
@@ -93,6 +116,10 @@ void compute_genotype_log_probs(
 }
 """
 
+# ALTERNATE (not live): cn-noise variant that also keeps the 0-copy genotype.
+# Adds the Poisson copy-number-noise term and normalizes to a distribution.
+# NOTE: its inner read-model block is scoped inside an else{} so `pread` is local;
+# kept for reference only.
 # TODO: inlcuding 0 copy.
 kernel_log_probability_cn_noise_with_zero_copy = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
@@ -199,6 +226,22 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
 }
 """
 
+# ===== LIVE kernel (used at runtime via compute_genotype_log_probs_cn_noise) =====
+# Per (cell, site) thread, computes for every genotype (g0,g1) the UN-normalized
+# log P(reads | g) + copy-number-noise term and writes the N-vector to `out`
+# (NOT normalized to a distribution here, unlike the alternates).
+# Inputs:
+#   ref, alt : ref/alt read counts, length ncell*nsite (row-major site,cell)
+#   cn       : observed total copy number per (cell,site); copy == -1 disables
+#              the cn-noise term (missing/unknown CN)
+#   afs      : per-site allele frequency (length nsite); currently the af prior
+#              terms are commented out of `prior`
+#   out      : output, length ncell*nsite*N (N genotype states per thread)
+#   ado, seqerr, cn_err : allelic-dropout, sequencing-error, cn-noise rates
+# Read model: marginalize over surviving copies (g0_,g1_) of (g0,g1); per surviving
+# config, binomial mix prob q -> P(ref)/P(alt), accumulated via stable log-sum-exp.
+# cn-noise: log_cn_error = cn_err * Poisson(copy; mean=g0+g1), with a (1-cn_err)
+# point mass added when g0+g1 == copy (exact match).
 kernel_log_probability_cn_noise = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
     float* ref, float* alt, float* cn,
@@ -269,20 +312,24 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
                              + g1_ * log1mado + (g1 - g1_) * logado;
                 
                     float val = pread + lw;
+                    // stable log-sum-exp accumulate: log(e^acc_log + e^val),
+                    // pivoting on the larger term to avoid overflow.
                     acc_log = (val > acc_log)
                         ? val + log1pf(expf(acc_log - val))
                         : acc_log + log1pf(expf(val - acc_log));
                 }
             }
 
+            // lower-triangular packing of (g0+g1, g0) into the flat state index.
             int index = ((g0 + g1) * (g0 + g1 + 1)) / 2 + g0 - (CN_MIN * (CN_MIN + 1)) / 2;
             log_probs[index] = acc_log;
 
+            // cn-noise mixture: cn_err * Poisson, plus (1-cn_err) point mass on exact match.
             log_cn_error = logf(cn_err) + log_cn_error;
             if (g0 + g1 == copy){
-                  log_cn_error = logf(expf(log_cn_error) + (1-cn_err)); 
+                  log_cn_error = logf(expf(log_cn_error) + (1-cn_err));
             }
-            if (copy != -1) log_probs[index] += log_cn_error;
+            if (copy != -1) log_probs[index] += log_cn_error;  // copy==-1: no observed CN
 
 
             if (log_probs[index] > maxval) maxval = log_probs[index];
@@ -296,6 +343,10 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
 }
 """
 
+# ALTERNATE (not live): original cn-noise variant. Like the live one but keeps the
+# allele-frequency prior (g0*log_af + g1*log_1maf) and normalizes each (cell,site)
+# output to a log-probability distribution (subtracts logZ). Exposed via the
+# compute_genotype_log_probs_cn_noise_origin() wrapper but not used at runtime.
 kernel_log_probability_cn_noise_original = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
     float* ref, float* alt, float* cn,
@@ -402,6 +453,9 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
 """
 
 
+# ALTERNATE (not live): cn-noise variant where the mixture is applied as a flat
+# log(cn_err) / log(1-cn_err) weight (no Poisson+point-mass blend). Has no wrapper;
+# kept for reference only.
 kernel_log_probability_cn_noise2 = r"""
 extern "C" __global__ void compute_genotype_log_probs_cn_noise(
     float* ref, float* alt, float* cn,
@@ -506,8 +560,16 @@ extern "C" __global__ void compute_genotype_log_probs_cn_noise(
 """
 
 
-# mat1: (nsite, k) mat2: (k, k)
-# Optimized: shared memory for mat2 + two-pass log-sum-exp
+# =============================================================================
+# LOG-SPACE linear-algebra kernels for the tree-likelihood DP. All compute in log
+# space: a log-domain "matmul" replaces sum-of-products with log-sum-exp of sums.
+# =============================================================================
+
+# Single log-domain matmul: out = log( exp(mat1) @ exp(mat2)^T ), i.e.
+#   out[i,j] = logsumexp_p( mat1[i,p] + mat2[j,p] ).
+# mat1: (n, k)  mat2: (k, k)  out: (n, k). Thread (i,j) = (row, col).
+# mat2 is cooperatively staged into shared memory; a two-pass log-sum-exp
+# (find max, then sum exp(.-max)) keeps it numerically stable. Empty rows -> -inf.
 kernel_log_matmul = r"""
 extern "C" __global__ void log_matmul(float* mat1, float* mat2, float* out, int n, int k){
     extern __shared__ float s_mat2[];
@@ -578,8 +640,12 @@ extern "C" __global__ void log_matmul(float* mat1, float* mat2, float* out, int 
 # """
 
 
-# non-contiguous pointers: logmatmul
-# Optimized: shared memory for mat2 + two-pass log-sum-exp + off-by-one fix
+# Batched log-domain matmul over m matrices (a single shared mat2).
+# bmat1 / bout are device arrays of m POINTERS (one per batch element); batch index
+# = blockIdx.z (z in [0,m)). Each mat1[z]/out[z] is (n, k); mat2 is (k, k) shared.
+#   out[z][i,j] = logsumexp_p( mat1[z][i,p] + mat2[j,p] ).
+# mat2 staged to shared memory once per block; two-pass log-sum-exp; empty -> -inf.
+# (The commented block just above is the older non-shared-memory implementation.)
 kernel_batch_log_matmul = r"""
 extern "C" __global__ void batch_log_matmul(float** bmat1, float* mat2, float** bout, int m, int n, int k){
     extern __shared__ float s_mat2[];
@@ -599,7 +665,7 @@ extern "C" __global__ void batch_log_matmul(float** bmat1, float* mat2, float** 
     __syncthreads();
 
     if (i < n && j < k) {
-        float* mat1 = bmat1[z];
+        float* mat1 = bmat1[z];   // per-batch matrix pointer (double-pointer array)
         float* out = bout[z];
 
         // Two-pass log-sum-exp
@@ -620,6 +686,10 @@ extern "C" __global__ void batch_log_matmul(float** bmat1, float* mat2, float** 
 }
 """
 
+# Batched per-row log "dot product" of TWO matrices (elementwise sum then row reduce):
+#   bout[z, i] = logsumexp_p( mat1[z][i,p] + mat2[z][i,p] ).
+# bmat1/bmat2: arrays of m pointers; batch = blockIdx.z; mat[z] is (n, k); thread = row i.
+# bout is a flat (m, n) array indexed bout[z*n + i]. One-pass log-sum-exp.
 # non-contiguous pointers: logmatmul
 kernel_batch_log_vecdot = r"""
 extern "C" __global__ void batch_log_vecdot(float** bmat1, float** bmat2, float* bout, int m, int n, int k){
@@ -647,6 +717,10 @@ extern "C" __global__ void batch_log_vecdot(float** bmat1, float** bmat2, float*
 """
 
 
+# Same as batch_log_vecdot but over THREE matrices:
+#   bout[z, i] = logsumexp_p( mat1[z][i,p] + mat2[z][i,p] + mat3[z][i,p] ).
+# bmat1/2/3: arrays of m pointers; batch = blockIdx.z; mat[z] is (n, k); thread = row i;
+# bout flat (m, n) indexed bout[z*n + i].
 # non-contiguous pointers: logmatmul
 kernel_batch_log_3vecdot = r"""
 extern "C" __global__ void batch_log_3vecdot(float** bmat1, float** bmat2, float** bmat3, float* bout, int m, int n, int k){
@@ -675,6 +749,10 @@ extern "C" __global__ void batch_log_3vecdot(float** bmat1, float** bmat2, float
 """
 
 
+# Batched elementwise add: out[z][i,j] = mat1[z][i,j] + mat2[z][i,j]
+# (a plain add; in log space this is a log-domain elementwise product).
+# bmat1/bmat2/bout: arrays of m pointers; batch = blockIdx.z; each mat[z] is (n, k);
+# thread (i,j) = (row, col).
 # non-contiguous pointers: logmatadd
 kernel_batch_matadd = r"""
 extern "C" __global__ void batch_matadd(float** bmat1, float** bmat2, float** bout, int m, int n, int k){
@@ -693,6 +771,10 @@ extern "C" __global__ void batch_matadd(float** bmat1, float** bmat2, float** bo
 }
 """
 
+# Batched elementwise add with BROADCAST/stride on mat2: each k-row block of mat1
+# is added to the same row of mat2. out[z][i,j] = mat1[z][i,j] + mat2[z][(i/k),j],
+# i.e. mat2[z] (k, k) is broadcast across groups of k rows of mat1[z] (n, k).
+# bmat1/bmat2/bout: arrays of m pointers; batch = blockIdx.z; thread (i,j).
 # non-contiguous pointers: logmatadd
 kernel_batch_matadd_stride = r"""
 extern "C" __global__ void batch_matadd_stride(float** bmat1, float** bmat2, float** bout, int m, int n, int k){
@@ -712,7 +794,11 @@ extern "C" __global__ void batch_matadd_stride(float** bmat1, float** bmat2, flo
 """
 
 
-# Fused kernel: batch_matadd + batch_log_matmul in one launch
+# FUSED kernel: batch_matadd + batch_log_matmul in ONE launch, computing
+# log( (A+B) @ mat2^T ) directly to save a kernel launch + a global round-trip of A+B.
+#   out[z][i,j] = logsumexp_p( (mat_a[z][i,p] + mat_b[z][i,p]) + mat2[j,p] ).
+# bmat_a/bmat_b/bout: arrays of m pointers; batch = blockIdx.z; mat[z] is (n, k);
+# mat2 is (k, k) shared; thread (i,j); two-pass log-sum-exp; empty -> -inf.
 # Computes: out[z] = log_matmul(mat_a[z] + mat_b[z], mat2)
 kernel_batch_add_log_matmul = r"""
 extern "C" __global__ void batch_add_log_matmul(
@@ -759,46 +845,60 @@ extern "C" __global__ void batch_add_log_matmul(
 """
 
 
+# Each function below compiles its kernel source into a cp.RawKernel and returns it.
+# Call the returned kernel as kernel(grid, block, (args...)) (and shared_mem=... for
+# the shared-memory kernels).
+
+# Compile the ALTERNATE SNV-only genotype kernel (not used at runtime).
 def compute_genotype_log_probs():
     return cp.RawKernel(kernel_log_probability, "compute_genotype_log_probs")
 
 
+# Compile the LIVE genotype-likelihood-with-cn-noise kernel.
 def compute_genotype_log_probs_cn_noise():
     return cp.RawKernel(
         kernel_log_probability_cn_noise, "compute_genotype_log_probs_cn_noise"
     )
 
 
+# Compile the ALTERNATE "original" cn-noise kernel (af prior + normalization).
 def compute_genotype_log_probs_cn_noise_origin():
     return cp.RawKernel(
         kernel_log_probability_cn_noise_original, "compute_genotype_log_probs_cn_noise"
     )
 
 
+# Compile the single log-domain matmul kernel (needs shared_mem = k*k*4 bytes).
 def log_matmul_cuda():
     return cp.RawKernel(kernel_log_matmul, "log_matmul")
 
 
+# Compile the batched log-domain matmul kernel (needs shared_mem = k*k*4 bytes).
 def batch_log_matmul_cuda():
     return cp.RawKernel(kernel_batch_log_matmul, "batch_log_matmul")
 
 
+# Compile the batched 2-vector log-dot kernel.
 def batch_log_vecdot_cuda():
     return cp.RawKernel(kernel_batch_log_vecdot, "batch_log_vecdot")
 
 
+# Compile the batched 3-vector log-dot kernel.
 def batch_log_3vecdot_cuda():
     return cp.RawKernel(kernel_batch_log_3vecdot, "batch_log_3vecdot")
 
 
+# Compile the batched elementwise add kernel.
 def batch_matadd_cuda():
     return cp.RawKernel(kernel_batch_matadd, "batch_matadd")
 
 
+# Compile the batched elementwise add with row-broadcast (stride) kernel.
 def batch_matadd_stride_cuda():
     return cp.RawKernel(kernel_batch_matadd_stride, "batch_matadd_stride")
 
 
+# Compile the FUSED add+log-matmul kernel (needs shared_mem = k*k*4 bytes).
 def batch_add_log_matmul_cuda():
     return cp.RawKernel(kernel_batch_add_log_matmul, "batch_add_log_matmul")
 

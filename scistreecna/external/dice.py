@@ -18,12 +18,14 @@ def write_to_dice(reads, output_file="dice_input.tsv"):
     end = 1000000  # Arbitrary interval size
 
     with open(output_file, "w") as f:
+        # DICE expects one row per (cell, genomic bin) with its CN state
         f.write("CELL\tchrom\tstart\tend\tCN states\n")
         for site in range(n_sites):
             for cell in range(n_cells):
                 cell_name = f"leaf{cell}"
                 cn_state = int(reads[site, cell, 2])  # Extract the copy number state
                 f.write(f"{cell_name}\t{chrom}\t{start}\t{end}\t{cn_state}\n")
+            # Advance the genomic interval so each site maps to a distinct bin
             start += 1000000
             end += 1000000
 
@@ -34,13 +36,30 @@ def infer_dice_tree(
     tempfile="dice_tmp",
     cell_names=None,
 ):
+    """Run the external DICE binary on copy-number profiles to infer a tree (baseline).
+
+    Writes reads to DICE's TSV input format, invokes the DICE `executable` with a
+    balanced minimum-evolution (balME) model, and parses its Newick output.
+
+    Args:
+        reads: array (n_sites, n_cells, 3); only the CN column is used by DICE.
+        executable: path to the DICE binary (must exist).
+        tempfile: prefix for the temporary input file / output directory.
+        cell_names: leaf labels; defaults to integer cell indices.
+
+    Returns:
+        The inferred tree with leaves relabeled to cell_names.
+    """
     assert os.path.exists(executable), "DICE not found."
     n_cells = reads.shape[1]
     write_to_dice(reads, output_file=f'{tempfile}_input.tsv')
+    # Invoke DICE: -t build tree, -m balME = balanced minimum evolution model
     os.system(f"{executable} -i {tempfile}_input.tsv -t -o {tempfile} -m balME")
+    # DICE writes the rooted balME tree as a Newick file in the output directory
     with open(f"{tempfile}/standard_root_balME_tree.nwk", "r") as f:
         dice_nwk = f.readline().strip()
     dice_tree = util.from_newick(dice_nwk)
+    # Map DICE's "leaf<i>" labels back to integer cell indices, then to cell_names
     dice_name_map = {f"leaf{i}": str(i) for i in range(n_cells)}
     dice_tree = util.relabel(dice_tree, name_map=dice_name_map)
     if cell_names is None:

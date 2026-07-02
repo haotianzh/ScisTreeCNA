@@ -39,17 +39,20 @@ def infer_copy_number_tree(copy_numbers, cell_names=None):
         for j, distance in enumerate(row_distances):
             distance_matrix[i, j] = distance
 
-    # Construct the NJ tree
+    # Construct the NJ tree via BioPython's neighbor-joining
     constructor = DistanceTreeConstructor()
     nj_tree = constructor.nj(distance_matrix)
+    # Strip internal node labels so only leaves carry names
     for clade in nj_tree.get_nonterminals():
         clade.name = None
     newick_string = nj_tree.format("newick")
     import re
 
+    # Drop branch lengths (":<value>") to leave a topology-only Newick string
     newick = re.sub(r":[^,);]+", "", newick_string)
     if cell_names is None:
         cell_names = util.get_default_cell_names(n_cells)
+    # Parse Newick into the internal tree and relabel integer leaves to cell_names
     tree = util.relabel(
         util.from_newick(newick),
         name_map={str(i): name for i, name in enumerate(cell_names)},

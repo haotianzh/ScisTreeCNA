@@ -28,7 +28,7 @@ class TraversalGenerator(object):
         self.iterator = None
 
     def __call__(self, tree, order="post"):
-        # calling function
+        # dispatch to the requested traversal generator and return its iterator
         valid_methods = {"pre": self._pre, "in": self._in, "post": self._post}
         assert order in valid_methods, "order should be in ['pre', 'mid', 'post']"
         method = valid_methods[order]
@@ -36,7 +36,9 @@ class TraversalGenerator(object):
         return iterator
 
     def _pre(self, tree):
-        # pre-order traverse
+        # pre-order traversal: yield a node before its children. Walks down to the
+        # first unvisited child each step, backtracking via parent when exhausted;
+        # `traverse_nodes` tracks visited identifiers until all nodes are yielded.
         node = tree.root
         traverse_nodes = []
         while len(traverse_nodes) != len(tree):
@@ -58,10 +60,12 @@ class TraversalGenerator(object):
             node = node.parent
 
     def _in(self, tree):
-        # mid-order traverse
+        # in-order traversal: not implemented.
         warnings.warn("no implementation currently")
 
     def _post(self, tree):
+        # post-order traversal: yield a node only after all its children. Descends
+        # to the deepest unvisited child, yields, then climbs back to the parent.
         node = tree.root
         traverse_nodes = []
         while len(traverse_nodes) != len(tree):
@@ -99,9 +103,15 @@ def from_node(node: Node) -> BaseTree:
 
 
 def from_newick(newick: str) -> BaseTree:
-    """Build a tree according to a newick-format string"""
+    """Build a tree according to a newick-format string.
+    Recursive-descent style parse using a stack: as the string is scanned,
+    completed nodes are pushed onto `nodes` tagged with their nesting `level`;
+    a closing ')' pops all just-built children at the current level and attaches
+    them to a new parent node. The single remaining node is the root."""
 
     def _isvalid(s):
+        # validity check: every ')' must match a prior '(' and the string must end
+        # with ';' and be fully balanced.
         checking_stack = []
         for ch in s:
             checking_stack.append(ch) if ch == "(" else None
@@ -113,6 +123,9 @@ def from_newick(newick: str) -> BaseTree:
         return True if not checking_stack and ch == ";" else False
 
     def _next(i):
+        # read one token starting at index i: returns (identifier, branch_length,
+        # end_index). A token runs until the next ',', ')' or ';'; an optional
+        # ':branch' suffix splits identifier from branch length.
         stop_words = [",", ")", ";"]
         if newick[i] in stop_words:
             return None, 0, i
@@ -140,6 +153,8 @@ def from_newick(newick: str) -> BaseTree:
             i += 1
             continue
         if newick[i] == ")":
+            # close a clade: read this internal node's label/branch, then pop every
+            # node tagged with the current `level` off the stack as its children.
             if not nodes:
                 raise Exception("newick: bad parsing.")
             identifier, branch, end = _next(i + 1)
@@ -166,6 +181,8 @@ def from_newick(newick: str) -> BaseTree:
 
 
 def apply_attr_on_tree(tree, attrname, func=None):
+    """Apply `func` to the named attribute `attrname` of every node in the tree
+    (in place, delegating to each node's apply_on_attr)."""
     for name in tree.get_all_nodes():
         node = tree[name]
         node.apply_on_attr(attrname, func)
@@ -173,6 +190,9 @@ def apply_attr_on_tree(tree, attrname, func=None):
 
 # perturb the branch lengths for data without clock property
 def perturb_tree_length(tree, min=0.5, max=1.5, mode="mul"):
+    """Return a copy of `tree` with every non-root branch length perturbed.
+    mode='mul' multiplies each branch by a U(min, max) factor; mode='add' adds a
+    U(0, 1) amount. Used to break the molecular-clock property of test data."""
     tree = tree.copy()
     for node_str in tree.get_all_nodes():
         node = tree[node_str]
@@ -193,6 +213,10 @@ def perturb_tree_length(tree, min=0.5, max=1.5, mode="mul"):
 # only be using when labels are integers
 # name_map should be a dictionary which is formatted as {'old_name': 'new_name'}
 def relabel(tree, offset=0, name_map=None):
+    """Return a copy of `tree` with leaf names remapped.
+    Either shift integer leaf names by `offset`, OR rename via `name_map`
+    ({'old_name': 'new_name'}); specifying both is an error. With neither, returns
+    an unchanged copy. Copy-then-relabel, so the input tree is untouched."""
     tree = tree.copy()
     # try:
     if offset != 0 and name_map:
@@ -221,17 +245,23 @@ def relabel(tree, offset=0, name_map=None):
 
 
 class BNode(Node):
-    # extended Node class for recording mutations
+    # extended Node class that also records the list of mutations placed on its branch
     def __init__(self, identifier=None, name=None, branch=0):
         super().__init__(identifier, name, branch)
         self.mutations = []
 
     def add_mutations(self, mutations):
+        """Append `mutations` (column indices) to this node's mutation list."""
         self.mutations.extend(mutations)
 
 
 #  vanilla implementation takes O(nm^2) that simply check every pair of columns to see if they are disjoint or one includes the other one.
 def check_no_conflict_vanilla(mat):
+    """Brute-force perfect-phylogeny conflict test on a binary genotype matrix
+    (rows=cells, cols=mutations). For every column pair, the four-gamete test says
+    they are compatible iff at least one of the gametes (0,1),(1,0),(1,1) is
+    absent across the rows; if all three appear the columns conflict.
+    Returns True iff no pair conflicts. O(n*m^2)."""
     nrow, ncol = mat.shape
     gametes = [[0, 1], [1, 0], [1, 1]]
     for i in range(ncol):
@@ -248,12 +278,15 @@ def check_no_conflict_vanilla(mat):
 
 
 def remove_homozygous_columns(mat):
+    """Drop all-zero columns (mutations present in no cell) from a binary matrix."""
     mask = mat.sum(axis=0) > 0
     return mat[:, mask]
 
 
 # useless one
 def binary_number(arr):
+    """Interpret a 0/1 array as a binary number (first element = most significant
+    bit) and return its integer value. Unused helper."""
     s = 0
     for i, ele in enumerate(arr[::-1]):
         if ele:
@@ -263,6 +296,11 @@ def binary_number(arr):
 
 # sort by binary numbers and remove duplicates
 def rearrangement(mat):
+    """Sort columns of `mat` in descending order of their binary string (rows read
+    top-to-bottom) and collapse identical columns, per Gusfield's radix sort step.
+    Returns (final_index, groups): `final_index` lists one representative column
+    index per distinct column in sorted order; `groups` maps each representative to
+    the list of original indices that shared that identical column."""
     nrow, ncol = mat.shape
     binary_strs = []
     for i in range(ncol):
@@ -286,6 +324,12 @@ def rearrangement(mat):
 
 # get a matrix for determining L(j)
 def preprocess(mat):
+    """Build Gusfield's L matrix used to decide conflict-freeness and tree shape.
+    After deduplicating/sorting columns (rearrangement), for each cell row scan its
+    sorted columns left-to-right; at every 1-entry record in pre_mat the
+    (1-based) index of the previous 1-entry in that row (0 if none). L(i,j) is thus
+    the immediately preceding mutation present in cell i before column j.
+    Returns (sorted_mat, pre_mat, indices, groups)."""
     nrow, ncol = mat.shape
     indices, groups = rearrangement(mat)
     mat_ = mat[:, indices].copy()
@@ -302,6 +346,11 @@ def preprocess(mat):
 
 #  Gusfield here did some sortings based on binary numbers then make an improvement to O(nm) [n: # of cells, m: # of columns]
 def check_no_conflict(mat):
+    """O(n*m) perfect-phylogeny conflict test (Gusfield).
+    Using the L matrix from preprocess, a column j is conflict-free iff all cells
+    carrying mutation j share the same immediately-preceding mutation L(i,j); if any
+    1-entry's L value differs from the column's max, two columns overlap without
+    nesting and the matrix conflicts. Returns True iff conflict-free."""
     nrow, ncol = mat.shape
     mat_, L, indices, groups = preprocess(mat)
     for j in range(L.shape[1]):
@@ -314,6 +363,12 @@ def check_no_conflict(mat):
 
 # phylogeny construction from Gusfield's paper from a conflict-free matrix
 def build_perfect_phylogeny(mat):
+    """Construct the perfect phylogeny tree from a binary genotype matrix
+    (rows=cells, cols=mutations). Raises if the matrix has conflicts. Steps:
+    (1) build the mutation tree by linking each mutation under its parent mutation
+        (L(j)=0 -> child of root), (2) attach each cell as a leaf under its last
+        (deepest) mutation, (3) prune chains by merging single-child mutation nodes.
+    Returns a BaseTree of BNode objects carrying their mutation lists."""
     mat = remove_homozygous_columns(mat)
     if not check_no_conflict(mat):
         raise Exception("This are some conflicts in the matrix provided.")
@@ -343,6 +398,7 @@ def build_perfect_phylogeny(mat):
     # step 2: add cells into the mutation tree
     nrow, ncol = mat_.shape
     for i in range(nrow):
+        # last (right-most, i.e. deepest) mutation present in cell i -> its leaf hangs there
         max_index = ncol - np.argmax(mat_[i][::-1]) - 1
         last_mutation_node = mutation_nodes[indices[max_index]]
         leaf_node = BNode(identifier=i)
@@ -351,7 +407,8 @@ def build_perfect_phylogeny(mat):
 
     # phylogeny = popgen.utils.from_node(root)
     # phylogeny.print()
-    # step 3: tree prune
+    # step 3: tree prune - collapse mutation nodes with a single child, merging
+    # their mutations onto that child (removes redundant unary internal nodes)
     for label in mutation_nodes:
         node = mutation_nodes[label]
         if len(node.get_children()) == 1:
@@ -479,6 +536,8 @@ def single_spr_move(tree, verbose=False):
 
 
 def spr_move(tree, move):
+    """Apply `move` successive random single SPR moves to `tree`, returning the
+    final perturbed tree."""
     for _ in range(move):
         tree = single_spr_move(tree)
     return tree
@@ -491,7 +550,9 @@ def spr_distance_cpp(
     spr_exec_path="/home/haz19024/softwares/rspr/rspr",
 ):
     """
-    Computes the SPR distance between two vectors.
+    Compute the rooted SPR distance between two trees given as Newick strings by
+    shelling out to the external `rspr` binary. `upper_bound`, when given, enables
+    the faster split-approximation mode. Returns the distance as a float.
     """
     assert os.path.exists(spr_exec_path), "rSPR binary file not found."
     if not upper_bound:
@@ -506,19 +567,26 @@ def spr_distance_cpp(
             input=f"{newick1}\n{newick2}".encode(),
             stdout=sp.PIPE,
         )
+    # rspr prints "...distance=<n>" on its second-to-last output line
     result = a.stdout.decode().split("\n")[-2].split("=")[1]
     return float(result)
 
 
 def spr_distance(tree1, tree2):
+    """Convenience wrapper: compute the SPR distance between two BaseTree objects
+    by serializing them to Newick and calling spr_distance_cpp."""
     newick1 = str(tree1)
     newick2 = str(tree2)
     return spr_distance_cpp(newick1, newick2)
 
 
 def get_random_binary_tree(n_leave, start_index=0, random_branch=True, seed=None):
-    # create a random binary tree given the number of leaves
-    if seed:
+    """Generate a random rooted binary tree with `n_leave` leaves labelled
+    start_index..start_index+n_leave-1. Repeatedly picks two random current nodes
+    and joins them under a new parent until one root remains. With
+    `random_branch`, child branch lengths are random U(0,1); `seed` fixes the RNG.
+    Returns a BaseTree."""
+    if seed is not None:
         np.random.seed(seed)
     nodes = [BNode(identifier=i) for i in range(start_index, n_leave + start_index)]
     while len(nodes) > 1:
@@ -543,8 +611,10 @@ def get_random_binary_tree(n_leave, start_index=0, random_branch=True, seed=None
 
 
 def build_no_repeat_clade(g):
+    """Empty stub - not implemented."""
     clades = set()
 
 
 def mutated_clade_dist(g1, g2):
+    """Empty stub - not implemented."""
     pass

@@ -14,6 +14,13 @@ class Node(object):
     """
 
     def __init__(self, identifier=None, name=None, branch=None):
+        """Create a node.
+
+        Args:
+            identifier: unique id; if None/empty an auto UUID-like hex id is generated.
+            name: display label; defaults to str(identifier) when omitted.
+            branch: branch length to parent (float), or any object attached to the branch.
+        """
         self.identifier = identifier
         if name is None:
             self.name = str(self.identifier)
@@ -21,29 +28,37 @@ class Node(object):
             self.name = name
         self.parent = {}
         self.branch = branch
+        # Children are kept in two parallel structures: `children` (id -> Node) gives
+        # O(1) lookup/membership, while `_children` is an ordered list that preserves
+        # insertion order for printing/Newick output. Both are updated together.
         self.children = OrderedDict()
         self._children = []  # using for printing tree
 
     def __eq__(self, node):
+        # Two nodes are equal iff they share the same identifier.
         if node.identifier == self.identifier:
             return True
         return False
 
     def __hash__(self):
+        # Hash by identifier so nodes can be used as dict keys / set members.
         return hash(self.identifier)
 
     @property
     def identifier(self):
+        """The node's unique identifier."""
         return self._identifier
 
     @identifier.setter
     def identifier(self, nid):
+        # Auto-generate a random 5-byte hex id when none is supplied.
         if nid is None or nid == "":
             nid = str(binascii.hexlify(os.urandom(5)).decode("utf-8"))
         self._identifier = nid
 
     @property
     def branch(self):
+        """Branch length to the parent (or any object attached to the branch)."""
         return self._branch
 
     @branch.setter
@@ -58,12 +73,15 @@ class Node(object):
             self._branch = value
 
     def is_root(self):
+        """True if this node has no parent (level 0)."""
         return self.get_level() == 0
 
     def is_leaf(self):
+        """True if this node has no children."""
         return len(self.children) == 0
 
     def get_ancestors(self):
+        """Return ancestors from immediate parent up to the root (root last)."""
         parents = []
         node = self.parent
         while node:
@@ -72,6 +90,7 @@ class Node(object):
         return parents
 
     def get_descendants_dict(self):
+        """Return all descendants (excluding self) as an id -> Node dict, via BFS."""
         # simple bfs for searching descendants
         descendants = {}
         queue = [self]
@@ -83,6 +102,11 @@ class Node(object):
         return descendants
 
     def get_siblings(self):
+        """Return the other children of this node's parent (None if no parent).
+
+        Note: hot code paths elsewhere compute siblings inline for speed instead
+        of calling this method.
+        """
         if not self.parent:
             return None
         siblings = []
@@ -92,6 +116,7 @@ class Node(object):
         return siblings
 
     def get_descendants(self):
+        """Return all descendants (excluding self) as a list, via BFS."""
         # simple bfs for searching descendants
         descendants = []
         queue = [self]
@@ -107,25 +132,32 @@ class Node(object):
         Adding child to a specific node. Potentially running slow due to inner traversal for ensuring no conflicts
         happened. (should be optimized in the future)
         """
+        # Consistency checks: a node may not already be a descendant (cycle/dup)
+        # nor an ancestor of self.
         if node.identifier in [d.identifier for d in self.get_descendants()]:
             raise Exception("node %s has already been added." % node.identifier)
         if node.identifier in [a.identifier for a in self.get_ancestors()]:
             raise Exception("parent %s cannot be added as a child." % node.identifier)
+        # Update both the dict (for lookup) and the ordered list (for ordering).
         self.children[node.identifier] = node
         self._children.append(node)
 
     def remove_child(self, node):
+        """Detach a direct child; raises if `node` is not a child of self."""
         if node.identifier not in self.children:
             raise Exception(
                 "node %s is not a child of %s." % (node.identifier, self.identifier)
             )
+        # Keep dict and ordered list in sync.
         del self.children[node.identifier]
         self._children.remove(node)
 
     def get_children(self):
+        """Return direct children as an ordered list."""
         return self._children
 
     def get_leaves(self):
+        """Return all leaf descendants (or [self] if this node is a leaf)."""
         if self.is_leaf():
             return [self]
         leaves = []
@@ -135,6 +167,7 @@ class Node(object):
         return leaves
 
     def get_level(self):
+        """Return depth from the root (root = 0), counting ancestors."""
         level = 0
         node = self.parent
         while node:
@@ -143,14 +176,17 @@ class Node(object):
         return level
 
     def set_parent(self, parent):
+        """Set this node's parent (None makes it a root)."""
         if parent is None:
             self.parent = None
         else:
             self.parent = parent
 
     def set_branch(self, value):
+        """Set the branch length (delegates to the `branch` setter)."""
         self.branch = value
 
     def apply_on_attr(self, attrname, func=None):
+        """Set attribute `attrname` to func(self) when `func` is provided."""
         if func is not None:
             setattr(self, attrname, func(self))

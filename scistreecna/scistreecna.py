@@ -94,7 +94,97 @@ def estimate_batch_sizes(
     return info
 
 
+def _allele_specific_cn_logterm_gpu(cn_maj, cn_min, g0_arr, g1_arr, cn_err):
+    """Log copy-number emission term for allele-specific input.
+
+    Computes, for every (site, cell) and every genotype index, the log of
+
+        P(cn_maj, cn_min | g0, g1)
+            = sum_{k=0}^{g0} Binom(k; g0, 1/2) * Phi({cn_maj,cn_min} | {g1+k, g0-k})
+
+    where k = number of wild-type copies sitting on the mutated homolog, so the
+    true (unordered) allele-specific copy pair is {g1+k, g0-k}, and
+
+        Phi({M,m} | {c1,c2}) = Pcn(M|c1)Pcn(m|c2) + Pcn(M|c2)Pcn(m|c1)   (single term if c1==c2)
+        Pcn(o|t)             = (1-cn_err)*1[o==t] + cn_err*Poisson(o; lambda=t)
+
+    The symmetric Phi marginalizes over which homolog the caller labelled
+    "major" (so no phasing is needed). Poisson direction (observed ~ Poisson(true))
+    matches the total-CN kernel. Missing observations (cn_maj<0 or cn_min<0) yield 0
+    (the copy term drops out, leaving the genotype free, as for missing total CN).
+
+    Args:
+        cn_maj, cn_min: cupy float arrays (nsite, ncell). -1 marks a missing value.
+        g0_arr, g1_arr: cupy int arrays (N,) giving (g0, g1) for each genotype index.
+        cn_err:         copy-number error rate xi (float).
+
+    Returns:
+        cupy float32 array (nsite, ncell, N). Math is done in float64.
+    """
+    NEG_INF = -cp.inf
+    xi = float(cn_err)
+    log_xi = float(np.log(xi)) if xi > 0 else float("-inf")
+    log_1mxi = float(np.log1p(-xi)) if xi < 1 else float("-inf")
+    nsite, ncell = cn_maj.shape
+    N = int(g0_arr.shape[0])
+
+    # log-factorial lookup table, sized to cover all observed / true CN values.
+    obs_max = 0
+    for arr in (cn_maj, cn_min):
+        a = cp.where(arr < 0, 0, arr)
+        obs_max = max(obs_max, int(a.max().item()) if a.size else 0)
+    maxidx = max(obs_max, int(g0_arr.max().item()) + int(g1_arr.max().item())) + 2
+    logfact = cp.concatenate(
+        [cp.zeros(1, cp.float64), cp.cumsum(cp.log(cp.arange(1, maxidx + 1, dtype=cp.float64)))]
+    )
+
+    M = cn_maj.astype(cp.float64)[:, :, None]   # (nsite, ncell, 1)
+    mn = cn_min.astype(cp.float64)[:, :, None]
+    Mi = cp.clip(M, 0, maxidx).astype(cp.int64)
+    mni = cp.clip(mn, 0, maxidx).astype(cp.int64)
+    g0 = g0_arr.astype(cp.float64)[None, None, :]   # (1, 1, N)
+    g1 = g1_arr.astype(cp.float64)[None, None, :]
+    g0i = g0_arr.astype(cp.int64)[None, None, :]
+
+    def logpois(o_f, o_i, t_f):
+        # log Poisson(o; lambda=t), with the t==0 branch (mass only at o==0) handled exactly.
+        t_safe = cp.where(t_f == 0, 1.0, t_f)
+        lp = o_f * cp.log(t_safe) - t_f - logfact[o_i]
+        return cp.where(t_f == 0, cp.where(o_f == 0, 0.0, NEG_INF), lp)
+
+    def logpcn(o_f, o_i, t_f):
+        a = log_xi + logpois(o_f, o_i, t_f)
+        deg = cp.where(o_f == t_f, log_1mxi, NEG_INF)
+        return cp.logaddexp(a, deg)
+
+    acc = cp.full((nsite, ncell, N), NEG_INF, dtype=cp.float64)
+    kmax = int(g0_arr.max().item())
+    log2 = float(np.log(2.0))
+    for k in range(kmax + 1):
+        c1 = g1 + k                              # mutated-homolog true CN
+        c2 = g0 - k                              # wild-homolog true CN
+        g0mk_i = cp.clip(g0i - k, 0, maxidx)
+        logbin = logfact[g0i] - logfact[k] - logfact[g0mk_i] - g0 * log2   # (1,1,N)
+        a = logpcn(M, Mi, c1) + logpcn(mn, mni, c2)
+        b = logpcn(M, Mi, c2) + logpcn(mn, mni, c1)
+        logphi = cp.where(c1 == c2, a, cp.logaddexp(a, b))
+        term = logbin + logphi
+        term = cp.where(g0i >= k, term, NEG_INF)   # mask invalid k (k > g0)
+        acc = cp.logaddexp(acc, term)
+
+    missing = (cn_maj < 0) | (cn_min < 0)
+    acc = cp.where(missing[:, :, None], 0.0, acc)
+    return acc.astype(cp.float32)
+
+
 class NodeBatchLoader:
+    """Yields nodes across several trees in node-count-bounded batches.
+
+    Used by node-parallel passes: either flat ("all") or grouped into
+    topological layers ("up"/"down") so every node in a yielded batch can be
+    processed independently on the GPU. batch_size counts nodes, not trees.
+    """
+
     def __init__(self, trees, batch_size):
         self.trees = trees
         self.batch_size = batch_size  # number of trees
@@ -102,6 +192,7 @@ class NodeBatchLoader:
         self.orders = ["up", "down", "all"]
 
     def get_all_nodes(self):
+        """Flatten all nodes of all trees, tagging each with its tree id (tid)."""
         nodes = []
         for tid, tree in enumerate(self.trees):
             ns = tree.get_all_nodes().values()
@@ -115,6 +206,9 @@ class NodeBatchLoader:
         return len(self.trees) * n
 
     def __call__(self, order="up"):
+        """Yield node batches. order="all" flattens every node; "up"/"down"
+        yield one set of batches per topological layer so a batch never mixes a
+        parent with its child."""
         assert order in self.orders, "invalid order!"
         if order == "all":
             nodes = self.get_all_nodes()
@@ -130,6 +224,9 @@ class NodeBatchLoader:
 
 
 class TreeBatchLoader:
+    """Yields lists of candidate trees in batches of batch_size for whole-tree
+    batch evaluation (marginal_evaluate_dp_batch)."""
+
     def __init__(self, trees, batch_size=128):
         self.trees = trees
         self.batch_size = batch_size
@@ -138,12 +235,25 @@ class TreeBatchLoader:
         return len(self.trees)
 
     def __call__(self):
+        """Yield successive slices of self.trees of at most batch_size trees."""
         num_batch = (len(self) + self.batch_size - 1) // self.batch_size
         for b in range(num_batch):
             yield self.trees[b * self.batch_size : (b + 1) * self.batch_size]
 
 
 class ScisTreeCNA:
+    """GPU JSC inference engine: holds the genotype state space, the two
+    log-space branch transition matrices, and all likelihood / search / decoding
+    routines.
+
+    Args:
+        CN_MAX, CN_MIN: copy-number bounds; together they fix the set of valid
+            (g0, g1) genotype states and N = number of states.
+        LAMBDA_C, LAMBDA_S, LAMBDA_T: rates for the transition solver
+            (copy-number mutation, point mutation, and timeout/branch-length).
+        verbose: if True, print the solved transition matrices.
+    """
+
     def __init__(
         self, CN_MAX=3, CN_MIN=1, LAMBDA_C=1, LAMBDA_S=1, LAMBDA_T=50, verbose=True
     ):
@@ -179,9 +289,12 @@ class ScisTreeCNA:
         # print(self.tran_prob_mutation_free.shape)
 
     def valid(self, g0, g1):
+        """True iff (g0, g1) is a non-negative genotype with total CN in [CN_MIN, CN_MAX]."""
         return min(g0, g1) >= 0 and self.CN_MIN <= g0 + g1 <= self.CN_MAX
 
     def _indexing(self):
+        """Build the (g0, g1) <-> flat-state-index maps (state2index / index2state)
+        via triangular indexing, offset so the first valid total CN maps to 0."""
         state2index = {}
         index2state = {}
         for i in range(0, self.CN_MAX + 1):
@@ -202,40 +315,55 @@ class ScisTreeCNA:
     #     return int((i+j) * (i+j+1) / 2 + i - int((self.CN_MIN) * (self.CN_MIN + 1) / 2))
 
     def index_gt(self, i, j):
-        """
-        Index for state
-        """
+        """Flat state index for genotype (g0=i, g1=j)."""
         return self.state2index[(i, j)]
 
     def cn_profile_at_index(self, index):
-        """
-        CN profie at index
-        """
+        """Inverse of index_gt: return the (g0, g1) genotype for a flat state index."""
         return self.index2state[index]
 
     def index(self, i, j, p, q):
-        """
-        Index for transition matrix
-        """
+        """Flat index into the NxN transition matrix for the (i,j)->(p,q) entry."""
         # use yang's tri indexing
         i1 = self.index_gt(i, j)
         i2 = self.index_gt(p, q)
         return int(i1 * self.N + i2)
 
     def preprocess_reads_with_missing_values(self, reads):
+        """Return reads unchanged plus a (nsite, ncell) bool mask of missing
+        entries, identified by a total-CN value of -1."""
         cn = reads[:, :, 2]
         mask = cn == -1  # -1 indicates a missing
         # reads[:, :, 2][mask] = -1
         return reads, mask
 
+    def _allele_specific_cn_logterm(self, cn_maj, cn_min, cn_err):
+        """Build (g0, g1) index arrays and dispatch to the vectorized allele-specific term."""
+        g0_np = np.zeros(self.N, dtype=np.int64)
+        g1_np = np.zeros(self.N, dtype=np.int64)
+        for idx, (i, j) in self.index2state.items():
+            g0_np[idx] = i
+            g1_np[idx] = j
+        return _allele_specific_cn_logterm_gpu(
+            cn_maj, cn_min, cp.asarray(g0_np), cp.asarray(g1_np), cn_err
+        )
+
     def init_prob_leaves_gpu(self, reads, ado=0.1, seqerr=0.001, cnerr=0.2, af=None):
-        # here assume copy number is always correct.
+        # Total-CN input: reads[..., :3] = (ref, alt, total_cn).
+        # Allele-specific input: reads[..., :4] = (ref, alt, cn_major, cn_minor).
         reads = cp.asarray(reads, dtype=np.float32)
         reads, mask = self.preprocess_reads_with_missing_values(reads)
         nsite, ncell = reads.shape[:2]
+        allele_specific = reads.shape[2] >= 4
         ref = reads[:, :, 0]
         alt = reads[:, :, 1]
-        cn = reads[:, :, 2]
+        if allele_specific:
+            cn_maj = reads[:, :, 2]
+            cn_min = reads[:, :, 3]
+            # total copy number, missing iff either allele is missing
+            cn = cp.where((cn_maj < 0) | (cn_min < 0), cp.float32(-1), cn_maj + cn_min)
+        else:
+            cn = reads[:, :, 2]
         # Estimate allele frequencies
         if af is None:
             raf = cp.sum(ref / (cn / 2), axis=1)
@@ -248,26 +376,19 @@ class ScisTreeCNA:
         afs = cp.array(afs, dtype=cp.float32)
         threads_per_block = 128
         blocks_per_grid = (nsite * ncell + threads_per_block - 1) // threads_per_block
-        # print('threads per block', threads_per_block, 'blocks per grid', blocks_per_grid)
-        # compute_genotype_log_probs()((blocks_per_grid,), (threads_per_block,), (
-        #     ref.ravel(), alt.ravel(), cn.ravel(), afs, probs.ravel(),
-        #     np.float32(ado), np.float32(seqerr),
-        #     np.int32(ncell), np.int32(nsite),
-        #     np.int32(self.CN_MAX), np.int32(self.CN_MIN), np.int32(N)
-        # ))
-        # compute_genotype_log_probs_cn_noise_origin()((blocks_per_grid,), (threads_per_block,), (
-        #     ref.ravel(), alt.ravel(), cn.ravel(), afs, probs.ravel(),
-        #     np.float32(ado), np.float32(seqerr), np.float32(cnerr),
-        #     np.int32(ncell), np.int32(nsite),
-        #     np.int32(self.CN_MAX), np.int32(self.CN_MIN), np.int32(N)
-        # ))
+        # In allele-specific mode, feed cn=-1 so the kernel returns only the reads
+        # term (the allele-specific copy term is added separately, below). This reuses
+        # the exact reads likelihood used by the total-CN path.
+        cn_for_kernel = (
+            cp.full((nsite, ncell), -1.0, dtype=cp.float32) if allele_specific else cn
+        )
         util.compute_genotype_log_probs_cn_noise()(
             (blocks_per_grid,),
             (threads_per_block,),
             (
                 ref.ravel(),
                 alt.ravel(),
-                cn.ravel(),
+                cn_for_kernel.ravel(),
                 afs,
                 probs.ravel(),
                 np.float32(ado),
@@ -280,13 +401,20 @@ class ScisTreeCNA:
                 np.int32(N),
             ),
         )
-        probs = cp.ascontiguousarray(
-            cp.transpose(probs.reshape((nsite, ncell, N)), (1, 0, 2))
-        )
+        probs = probs.reshape((nsite, ncell, N))
+        if allele_specific:
+            probs = probs + self._allele_specific_cn_logterm(cn_maj, cn_min, cnerr)
+        probs = cp.ascontiguousarray(cp.transpose(probs, (1, 0, 2)))
         # mask = mask.T # (nsite, ncell) -> (ncell, nsite)
         return probs
 
     def pairwise_distance_matrix(self, probs):
+        """Expected genotype-mismatch distance between every pair of cells.
+
+        probs is log P(genotype) per (cell, site, state); exponentiating gives
+        per-state probabilities and the einsum sums, over sites and states, the
+        probability that cell i and cell j disagree, yielding an (ncell, ncell)
+        distance matrix for neighbor joining."""
         ncell, nsite, num_states = probs.shape
         exp_probs = cp.exp(probs)
         expected_distances = cp.einsum("ipq,jpq->ij", exp_probs, 1 - exp_probs)
@@ -305,7 +433,10 @@ class ScisTreeCNA:
     _MAX_GRID_Z = 65535  # CUDA grid z-dimension limit
 
     def _get_block_grid(self, h, w, batch):
-        """Compute optimal block/grid sizes for (h, w) matrices with batch."""
+        """Compute block/grid sizes for a batched (h, w) elementwise/matmul kernel.
+
+        x indexes rows (h, the sites), y indexes columns (w, the states), and the
+        grid's z-dimension is the batch (one tree-node slice per z)."""
         block_y = min(32, w)
         block_x = max(1, min(256 // block_y, 32))
         block_size = (block_x, block_y)
@@ -317,7 +448,11 @@ class ScisTreeCNA:
         return block_size, grid_size
 
     def _launch_batched_matmul(self, kernel, ptr_src, mat2, ptr_dst, nb, h, w, shared_mem):
-        """Launch a batch kernel, automatically splitting if nb > MAX_GRID_Z."""
+        """Batched log-matmul dst = src @ mat2 over nb node slices.
+
+        ptr_src/ptr_dst are GPU int arrays of base+index*stride byte pointers, one
+        per slice; the loop chunks the batch so the grid z-dim never exceeds the
+        CUDA limit (MAX_GRID_Z)."""
         for off in range(0, nb, self._MAX_GRID_Z):
             chunk = min(self._MAX_GRID_Z, nb - off)
             block_size, grid_size = self._get_block_grid(h, w, chunk)
@@ -326,7 +461,8 @@ class ScisTreeCNA:
                    shared_mem=shared_mem)
 
     def _launch_batched_add_matmul(self, kernel, ptr_a, ptr_b, mat2, ptr_dst, nb, h, w, shared_mem):
-        """Launch fused add+matmul kernel, splitting if nb > MAX_GRID_Z."""
+        """Batched fused dst = (a + b) @ mat2 in log space, chunked over MAX_GRID_Z.
+        Pointer args are per-slice base+index*stride byte-pointer arrays."""
         for off in range(0, nb, self._MAX_GRID_Z):
             chunk = min(self._MAX_GRID_Z, nb - off)
             block_size, grid_size = self._get_block_grid(h, w, chunk)
@@ -336,7 +472,8 @@ class ScisTreeCNA:
                    shared_mem=shared_mem)
 
     def _launch_batched_matadd(self, kernel, ptr_a, ptr_b, ptr_dst, nb, h, w):
-        """Launch batch matadd kernel, splitting if nb > MAX_GRID_Z."""
+        """Batched elementwise log-add dst = a + b (logaddexp of two child U's),
+        chunked over MAX_GRID_Z. Pointer args are per-slice byte-pointer arrays."""
         for off in range(0, nb, self._MAX_GRID_Z):
             chunk = min(self._MAX_GRID_Z, nb - off)
             block_size, grid_size = self._get_block_grid(h, w, chunk)
@@ -345,7 +482,8 @@ class ScisTreeCNA:
                     chunk, h, w))
 
     def _launch_batched_3vecdot(self, kernel, ptr_a, ptr_b, ptr_c, out, nb, h, w):
-        """Launch batch 3vecdot kernel, splitting if nb > MAX_GRID_Z."""
+        """Batched per-site three-vector log dot-product (a+b+c, then log-sum over
+        states) -> out (nb, h); used by PM-placement scoring. Chunked over MAX_GRID_Z."""
         for off in range(0, nb, self._MAX_GRID_Z):
             chunk = min(self._MAX_GRID_Z, nb - off)
             block_v = (256, 1)
@@ -537,6 +675,15 @@ class ScisTreeCNA:
         """
         Bottom-up — optimized using contiguous arrays + batched kernels (same as batch version).
         Still stores results on nodes for compatibility with calculate_Q and marginal_evaluate_dp.
+
+        Single-tree Felsenstein IN pass. For each node computes three (nsite, N)
+        log-likelihood tables:
+            U  = likelihood of the subtree given the node's genotype,
+            U_ = U pushed up a mutation-free branch (tran_prob_mutation_free),
+            _U = U pushed up the branch that carries the one point mutation
+                 (tran_prob_mutation).
+        Results are written back onto node.U / node.U_ / node._U. (misspelled
+        name kept intentionally.)
         """
         h, w = probs.shape[1:]
         shared_mem = w * w * 4
@@ -585,7 +732,7 @@ class ScisTreeCNA:
                 indices = cp.asarray(idx_l)
                 cell_ids = cp.asarray(cells)
                 nb = len(indices)
-                all_U[indices] = probs[cell_ids]
+                all_U[indices] = probs[cell_ids]  # leaf U = its cell's per-state log-emission
                 ptr_u  = base_U  + indices * stride
                 ptr_u_ = base_U_ + indices * stride
                 ptr__u = base__U + indices * stride
@@ -604,6 +751,7 @@ class ScisTreeCNA:
                 ptr_u  = base_U  + indices * stride
                 ptr_u_ = base_U_ + indices * stride
                 ptr__u = base__U + indices * stride
+                # U_ = (U_[c0] + U_[c1]) @ tran_mut_free; U = U_[c0] + U_[c1]; _U = U @ tran_mut
                 self._launch_batched_add_matmul(_add_matmul, ptr_c0_u_, ptr_c1_u_, self.tran_prob_mutation_free, ptr_u_, nb, h, w, shared_mem)
                 self._launch_batched_matadd(_matadd, ptr_c0_u_, ptr_c1_u_, ptr_u, nb, h, w)
                 self._launch_batched_matmul(_matmul, ptr_u, self.tran_prob_mutation, ptr__u, nb, h, w, shared_mem)
@@ -619,6 +767,12 @@ class ScisTreeCNA:
     def calculate_Q(self, tree):
         """
         calcuate Q for each site recursively, have to do after calculation of U, use this fashion instead of DFS
+
+        Top-down Felsenstein OUT pass. node.Q[site] is the (N, N) log table giving,
+        for each genotype at the node, the likelihood of everything outside its
+        subtree. Computed pre-order: root.Q is the identity; a child's Q starts
+        from its parent's Q, adds each sibling's mutation-free up-message (sib.U_),
+        then propagates across the node's own mutation-free branch.
         """
         assert "U" in tree.root.__dict__, "fatal: calculate U first!"
         nsite = tree.root.U.shape[0]
@@ -639,6 +793,16 @@ class ScisTreeCNA:
     def marginal_evaluate_dp(self, probs, tree):
         """
         DP speedup
+
+        Single-tree marginal log-likelihood with the one point mutation placed on
+        its best branch, per site. Runs the U (IN) and Q (OUT) passes, then for
+        every candidate branch combines _U (mutation message) with the siblings'
+        mutation-free messages and the parent's outside table Q to score "PM on
+        this branch"; the root branches score "no PM" / PM at the root.
+
+        Returns:
+            max_L:    sum over sites of the best per-site likelihood (best branch).
+            indicies: argmax branch index per site (which branch carries the PM).
         """
         nsite = probs.shape[1]
         self.calcualte_U(tree, probs)
@@ -649,11 +813,14 @@ class ScisTreeCNA:
         branches = []
         for node in self.traversor(tree):
             if node.is_root():
+                # PM at the root: read U directly at the three founder genotypes
                 likelihoods.append(node.U[:, self.index_gt(1, 1)])
                 likelihoods.append(node.U[:, self.index_gt(0, 2)])
                 likelihoods.append(node.U[:, self.index_gt(2, 0)])
                 # print(node.name, likelihood)
                 continue
+            # PM on this branch: this node's mutation message + siblings' mutation-free
+            # messages, propagated through the parent's outside table Q.
             res = node._U
             for sib in node.get_siblings():
                 res += sib.U_
@@ -664,7 +831,7 @@ class ScisTreeCNA:
             branches.append(node.identifier)
         likelihoods = cp.array(likelihoods)
         # print('ll', likelihoods)
-        indicies = cp.argmax(likelihoods, axis=0)
+        indicies = cp.argmax(likelihoods, axis=0)  # best PM branch per site
         max_L = likelihoods.max(axis=0).sum()
         return max_L, indicies
 
@@ -681,6 +848,11 @@ class ScisTreeCNA:
     def nni_search(self, tree):
         """
         NNI neighbor
+
+        Scaffold/debug walk over internal nodes whose two children are both
+        internal (quartet candidates); it identifies the four grandchildren but
+        performs no swap. See nni_search_sinlge_round_batch for the working
+        neighbor enumeration.
         """
         tree.draw()
         for node in tree.get_all_nodes():
@@ -697,6 +869,11 @@ class ScisTreeCNA:
     ):
         """
         NNI neighbor
+
+        One round of NNI: enumerate all quartet swaps (at internal nodes with two
+        internal children, 2 rearrangements each) and triplet swaps (at every
+        non-root internal node, 2 each), then batch-evaluate every neighbor plus
+        the base tree. Returns the best (tree, likelihood) found this round.
         """
         candidates = []
         # Pre-collect node identifiers for quartet and triplet swaps
@@ -712,7 +889,8 @@ class ScisTreeCNA:
             if not nd.is_root():
                 triplet_nodes.append(nid)
 
-        # Quartet swaps
+        # Quartet swaps: at node nid with children p1,p2, exchange one grandchild
+        # from p1's pair with one from p2's pair (two distinct rearrangements).
         _copy = struct_copy_tree
         for nid in quartet_nodes:
             t1 = _copy(tree)
@@ -738,7 +916,8 @@ class ScisTreeCNA:
             p2.add_child(lc1)
             candidates.append(t2)
 
-        # Triplet swaps
+        # Triplet swaps: at node nd, exchange one of nd's children with nd's sibling
+        # (two rearrangements, one per child of nd).
         for nid in triplet_nodes:
             t1 = _copy(tree)
             nd = t1[nid]
@@ -781,12 +960,18 @@ class ScisTreeCNA:
             max_lh = likelihoods[max_idx]
             if max_lh > best_likelihood:
                 best_likelihood = max_lh
+                # map the within-batch argmax back to an index in all_trees
                 best_tree = all_trees[int(bi * tree_batch_size + max_idx)]
         return best_tree, best_likelihood
 
     def nni_search_non_optim_sinlge_round(self, probs, tree):
         """
         NNI neighbor
+
+        Reference (un-optimized) single NNI round: same quartet + triplet
+        neighbor set as nni_search_sinlge_round_batch, but each candidate is
+        evaluated one at a time via marginal_evaluate_dp. Returns the best
+        (tree, likelihood).
         """
         candidates = []
         # tree.draw()
@@ -869,6 +1054,13 @@ class ScisTreeCNA:
         verbose=True,
         verbose_mode="all",
     ):
+        """Hill-climbing NNI local search (batched evaluation).
+
+        Repeatedly applies nni_search_sinlge_round_batch, moving to the best
+        neighbor each round, until the likelihood stops improving or max_iter is
+        reached (max_iter=0 means unbounded). If ground_truth is given, logs tree
+        accuracy / nRF each step. Returns the final (tree, likelihood).
+        """
         # tree = self.initial_tree(probs)
         assert verbose and verbose_mode in [
             "all",
@@ -921,6 +1113,9 @@ class ScisTreeCNA:
         return tree, L
 
     def local_search(self, probs, tree, ground_truth=None):
+        """Reference (un-batched) NNI local search using
+        nni_search_non_optim_sinlge_round; iterates until no improvement.
+        Returns the final (tree, likelihood)."""
         # tree = self.initial_tree(probs)
         L = -np.inf
         while True:
@@ -941,6 +1136,25 @@ class ScisTreeCNA:
     def maximal_evaluate(
         self, probs, tree, return_trees=False, reads=None, masks=None, use_gpu=True
     ):
+        """Max-product (Viterbi) pass: for each possible PM branch placement,
+        run a max-sum upward pass storing per-node argmax backpointers (node.arg),
+        and collect the per-site MAP log-likelihood at the root.
+
+        There are 2n-1 internal/leaf branch placements (plus 3 root founder
+        genotypes); iterating node1 over all branches selects which branch carries
+        the mutation (via tran_prob_mutation) while other branches use the
+        mutation-free matrix.
+
+        Args:
+            return_trees: also return the per-placement decoded trees (with .arg
+                backpointers) for downstream Viterbi decoding.
+            reads, masks: optional per-cell raw reads / missing masks to attach to
+                leaves for reporting.
+            use_gpu: run on CuPy (True) or NumPy (False).
+
+        Returns:
+            max_L, or (max_L, log_likelihoods, trees) when return_trees is True.
+        """
         xp = cp if use_gpu else np
         if not use_gpu:
             probs = cp.asnumpy(probs)  # copy to cpu anyway
@@ -1064,6 +1278,9 @@ class ScisTreeCNA:
         return max_L
 
     def _bfs(self, node, site_index, state_index):
+        """Top-down traceback: set node.cn to the (g0, g1) for the chosen state,
+        then recurse into children using the stored argmax backpointers
+        (node.arg) to pick each child's MAP state for this site."""
         cn_profile = self.cn_profile_at_index(state_index)
         node.cn = cn_profile
         if not node.is_leaf():
@@ -1072,6 +1289,10 @@ class ScisTreeCNA:
                 self._bfs(child, site_index, int(child_state_index))
 
     def viterbi_decoding(self, probs, tree, sites, use_gpu=True):
+        """For each requested site, pick the MAP PM placement and trace back the
+        per-node genotypes, returning one fully-decoded tree per site (each node
+        annotated with .cn). The last three likelihood rows are the root founder
+        genotypes (0,2)/(1,1)/(2,0); those map to a 'PM at root' decoding."""
         # total 2n+1 trees
         num_cell, num_site, _ = probs.shape
         decoded_trees = []
@@ -1080,8 +1301,9 @@ class ScisTreeCNA:
         )
         for site in sites:
             L = likelihoods[:, site]
-            arg_max = int(L.argmax())
+            arg_max = int(L.argmax())  # best PM placement for this site
             gt = (2, 0)
+            # the final three rows encode root founder genotypes (no internal-branch PM)
             if arg_max == 2 * num_cell - 2:
                 gt = (0, 2)
                 arg_max = -1
@@ -1096,6 +1318,8 @@ class ScisTreeCNA:
         return decoded_trees
 
     def genotype_calling(self, probs, tree):
+        """Call a binary (site x cell) mutation genotype matrix: a cell is mutant
+        (1) at a site iff its decoded leaf genotype has g1 > 0 (mutant copies present)."""
         num_cell, num_site, _ = probs.shape
         decoded_trees = self.viterbi_decoding(probs, tree, range(num_site))
         genotypes = np.zeros((num_site, num_cell), dtype=int)
@@ -1104,12 +1328,18 @@ class ScisTreeCNA:
             for leaf in max_tree.get_leaves():
                 leaf = max_tree[leaf]
                 cn_profile = leaf.cn
-                if cn_profile[1] > 0:
+                if cn_profile[1] > 0:  # g1 (mutant copies) > 0 -> mutant
                     genotypes[i, int(leaf.name)] = 1
         return genotypes
 
 
 def construct_genotype(tree, indices):
+    """Turn per-site best-PM-branch indices (from marginal_evaluate_dp) into a
+    binary (nsite, ncell) genotype matrix: cells under the PM branch are mutant.
+
+    The branch list mirrors marginal_evaluate_dp's likelihood ordering, with the
+    root entered three times (its three founder genotypes). The sentinel index
+    2*ncell means "PM at the wild-type root" -> no cell is mutant for that site."""
     # get node list
     node_lists = []
     traversor = util.TraversalGenerator()
@@ -1117,20 +1347,37 @@ def construct_genotype(tree, indices):
         if not node.is_root():
             node_lists.append(node)
         else:
-            node_lists += [tree.root, tree.root, tree.root]
+            node_lists += [tree.root, tree.root, tree.root]  # 3 root founder-genotype slots
     # print(node_lists)
     nsite = len(indices)
     ncell = len(tree.get_leaves())
     genotypes = np.zeros((nsite, ncell), dtype=int)
     for i, ind in enumerate(indices):
-        if ind != 2 * ncell:
+        if ind != 2 * ncell:  # 2*ncell = PM at wild-type root -> all cells reference
             node = node_lists[ind.tolist()]
-            idx = [int(leaf.name) for leaf in node.get_leaves()]
+            idx = [int(leaf.name) for leaf in node.get_leaves()]  # cells in PM subtree
             genotypes[i, idx] = 1
     return genotypes
 
 
+def total_copy_number(reads):
+    """Per-(site, cell) total copy number, for either input layout.
+
+    Total-CN input (..., 3) -> reads[..., 2]; allele-specific input (..., 4) ->
+    cn_major + cn_minor, marked missing (-1) iff either allele is missing.
+    """
+    reads = np.asarray(reads)
+    if reads.shape[-1] >= 4:
+        cmaj = reads[:, :, 2]
+        cmin = reads[:, :, 3]
+        return np.where((cmaj < 0) | (cmin < 0), -1, cmaj + cmin)
+    return reads[:, :, 2]
+
+
 def estimate_copy_number(copies, tree):
+    """Mean inferred ancestral/average copy number over all sites, used to set
+    LAMBDA_C. `copies` is the per-site (cell) total-CN matrix; each site is fit on
+    the given tree by CNEstimator."""
     nums = []
     for copy in copies:
         estimator = CNEstimator(copy)
@@ -1139,6 +1386,14 @@ def estimate_copy_number(copies, tree):
 
 
 def find_copy_gain_loss_on_branch(decoded_trees, gene_names=None, allele=1, loh=True):
+    """Annotate copy-number gain/loss events on tree branches.
+
+    Given one decoded tree per gene/locus (from viterbi_decoding, each node
+    carrying a .cn = (g0, g1)), compare each node's copy number of `allele`
+    (0=wild-type, 1=mutant) against its parent: an increase is a 'gain', a
+    decrease a 'loss' (restricted to losses reaching 0 when loh=True). Returns one
+    tree whose nodes hold node.events = {'gain': [...], 'loss': [...]} listing the
+    contributing gene names."""
     if not gene_names:
         gene_names = [f"gene_{i}" for i in range(len(decoded_trees))]
     traversor = util.TraversalGenerator()
@@ -1176,6 +1431,13 @@ def map_copy_gain_and_loss(
     loh=True,  # loh deletion only
     use_gpu=False,
 ):
+    """Map copy-number gain/loss events onto branches of a given tree for the
+    chosen `loci`.
+
+    Builds a ScisTreeCNA model from `reads` (LAMBDA_C set from estimated average
+    CN), computes leaf emission probs, Viterbi-decodes the selected sites on
+    `tree`, then calls find_copy_gain_loss_on_branch. `loci`/`site_names` select
+    which sites to map. Returns the event-annotated tree."""
     if loci is None:
         loci = site_names
     assert len(loci) > 0, "loci is empty."
@@ -1195,7 +1457,7 @@ def map_copy_gain_and_loss(
     start_tree = util.relabel(
         start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
     )
-    cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
+    cn_avg = estimate_copy_number(total_copy_number(reads), start_tree)
 
     s = ScisTreeCNA(
         CN_MAX=cn_max,
@@ -1232,6 +1494,25 @@ def infer(
     start_tree=None,
     verbose_mode="all",
 ):
+    """Main entry point: infer a cell lineage tree and genotype matrix from reads.
+
+    Pipeline: build an initial tree (ScisTree2 if start_tree is None, else the
+    provided newick/tree) -> estimate average CN to set LAMBDA_T = 2n-1 and
+    LAMBDA_C -> compute leaf emission probs -> NNI local search (local_search_batch)
+    -> place the PM per site (marginal_evaluate_dp) and call genotypes.
+
+    Args:
+        reads: (n_sites, n_cells, 3 or 4) read/CN array (see module docstring).
+        cn_min/cn_max, ado, seq_error, af, cn_noise: model parameters.
+        max_iter: NNI iteration cap (0 = unbounded).
+        tree_batch_size/node_batch_size: GPU batching for evaluation.
+        true_tree: optional ground truth for accuracy logging.
+        start_tree: optional initial tree (BaseTree or newick str).
+
+    Returns:
+        (tree, geno): inferred tree (relabelled to cell_names) and binary
+        (nsite, ncell) genotype matrix.
+    """
     assert cn_min > 0, "cn_min should be greater than 0."
     n_sites, n_cells, _ = reads.shape
     if cell_names is None:
@@ -1255,7 +1536,7 @@ def infer(
         true_tree = util.relabel(
             true_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
         )
-    cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
+    cn_avg = estimate_copy_number(total_copy_number(reads), start_tree)
     max_iter = max_iter if max_iter > 0 else np.inf
     if verbose:
         console.rule("[bold red]ScisTreeCNA")
@@ -1312,6 +1593,9 @@ def evaluate(
     af=0.5,
     cn_noise=0.05,
 ):
+    """Score a fixed `tree` (no search): build the model from `reads`, compute the
+    marginal log-likelihood with best per-site PM placement, and call genotypes.
+    Returns (marginal_log_likelihood, genotype_matrix)."""
     assert cn_min > 0, "cn_min should be greater than 0."
     n_sites, n_cells, _ = reads.shape
     if cell_names is None:
@@ -1321,7 +1605,7 @@ def evaluate(
     start_tree = util.relabel(
         start_tree, name_map={name: str(i) for i, name in enumerate(cell_names)}
     )
-    cn_avg = estimate_copy_number(reads[:, :, -1], start_tree)
+    cn_avg = estimate_copy_number(total_copy_number(reads), start_tree)
 
     s = ScisTreeCNA(
         CN_MAX=cn_max,
@@ -1361,4 +1645,5 @@ def bootstrapping(
     verbose=True,
     verbose_mode="all",
 ):
+    """Not implemented — placeholder stub for bootstrap support over resampled sites."""
     pass
