@@ -1062,7 +1062,7 @@ class ScisTreeCNA:
         accuracy / nRF each step. Returns the final (tree, likelihood).
         """
         # tree = self.initial_tree(probs)
-        assert verbose and verbose_mode in [
+        assert verbose_mode in [
             "all",
             "min",
         ], "verbose mode should be set to either 'all' or 'min'."
