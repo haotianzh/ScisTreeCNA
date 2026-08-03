@@ -51,4 +51,7 @@ from .transition_solver import TransitionProbability
 
 # __version__ = "0.1.0"  # first version
 
-__version__ = "1.1.0"  # fused kernels + continous memory layout
+# __version__ = "1.1.0"  # fused kernels + continous memory layout
+
+__version__ = "1.2.0"  # bioinformatics review + allelic-specific copy number + accleartion
+

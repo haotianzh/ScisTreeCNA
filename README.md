@@ -1,6 +1,6 @@
 <p align="center"><img width=300; src="https://raw.githubusercontent.com/haotianzh/ScisTreeCNA/refs/heads/main/imgs/logo.png"/></p>
 <p align="center">   
-  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="colab"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href=""><img src="https://img.shields.io/github/license/yufengwudcs/ScisTree2?color=%239b02fa"/></a>&thinsp;<a href="https://www.biorxiv.org/content/10.1101/2025.11.21.689819v1"><img alt="biorxiv" src="https://img.shields.io/badge/10.1101%2F2025.11.21.689819-red?label=DOI&color=%23ff0000&link=https%3A%2F%2Fwww.biorxiv.org%2Fcontent%2F10.1101%2F2025.11.21.689819v1"></a>
+  <a href="https://colab.research.google.com/drive/1roB2pnTBlFvoQtCNn0QDP3NgvGtK97Yl?usp=sharing"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="colab"/></a>&thinsp;<a href="https://scistreecna.readthedocs.io/en/latest/"><img src="https://img.shields.io/readthedocs/scistreecna/latest" alt="docs"/></a>&thinsp;<a href="https://github.com/haotianzh/ScisTreeCNA/issues"><img src="https://img.shields.io/github/issues/haotianzh/ScisTreeCNA" alt="GitHub issues"/></a>&thinsp;<a href=""><img src="https://img.shields.io/github/license/yufengwudcs/ScisTree2?color=%239b02fa"/></a>&thinsp;<a href="https://www.biorxiv.org/content/10.1101/2025.11.21.689819v1"><img alt="biorxiv" src="https://img.shields.io/badge/10.1101%2F2025.11.21.689819-red?label=DOI&color=%23ff0000&link=https%3A%2F%2Fwww.biorxiv.org%2Fcontent%2F10.1101%2F2025.11.21.689819v1"></a>
 </p>
 <!-- &thinsp;<a href="https://github.com/username/repo"><img src="https://img.shields.io/github/stars/haotianzh/ScisTreeCNA?style=social" alt="GitHub stars"/></a> -->
 <!-- **Accurate Probabilistic Reconstruction of Cell Lineage Trees from SNVs and CNAs** -->
@@ -12,6 +12,8 @@
 ScisTreeCNA is a **GPU-accelerated** Python package designed for reconstructing **Cell Lineage Trees (CLTs)** from single-cell DNA sequencing data. It addresses a key challenge by integrating both single nucleotide variants (**SNVs**) and copy number abberations (**CNAs**) within a unified **probabilistic** framework. This approach provides accurate and scalable inference for modern single-cell datasets containing both SNV and CNA information.
 
 > **Note:** If you do not have copy-number data and want to infer a cell lineage tree from SNVs only, please use [ScisTree2](https://github.com/yufengwudcs/ScisTree2).
+
+📖 Full documentation, including installation, tutorials and API details, is at **[scistreecna.readthedocs.io](https://scistreecna.readthedocs.io/en/latest/)**.
 
 ---
 
@@ -136,7 +138,7 @@ scistreecna_tree, scistreecna_geno = scna.infer(
 print(scistreecna_tree)  # print inferred tree
 print(scistreecna_geno)  # print imputed binary genotype
 ```
-More usage examples can be found in our [tutorials](tutorials/scistreecna_basic.ipynb).
+More usage examples can be found in our [tutorials](https://scistreecna.readthedocs.io/en/latest/usage/), which cover input formats, allele-specific copy numbers, mapping copy-number events onto branches, and evaluation against simulated data.
 
 
 

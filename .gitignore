@@ -19,7 +19,7 @@ dice_tmp*
 test.jpg
 bench*
 profile*
-
+*.tex
 build/
 experiments/
 tutorials/demo_cn_loh.py
@@ -39,3 +39,11 @@ autoresearch/baseline.log
 !autoresearch/*.md
 !autoresearch/*.sh
 !autoresearch/*.tsv
+
+# --- docs (Jupyter Book 2 / mystmd) ---
+docs/_build/
+docs/node_modules/
+docs/tutorials/quickstart_tree.nwk
+docs/tutorials/quickstart_genotype.txt
+docs/tutorials/missing_demo.csv
+docs/tutorials/allele_specific_demo.csv

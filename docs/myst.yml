@@ -1,0 +1,62 @@
+# Jupyter Book 2 / MyST configuration.
+# Docs: https://mystmd.org/guide/frontmatter
+# Build locally with:  jupyter-book build --html   (see README.md in this folder)
+version: 1
+
+project:
+  id: scistreecna
+  title: ScisTreeCNA
+  description: >-
+    Accurate probabilistic reconstruction of cell lineage trees from SNVs and CNAs.
+  authors:
+    - name: Haotian Zhang
+      email: haotiangeek@gmail.com
+      affiliations:
+        - University of Connecticut
+    - name: Yufeng Wu
+      email: yufeng.wu@uconn.edu
+      affiliations:
+        - University of Connecticut
+  github: https://github.com/haotianzh/ScisTreeCNA
+  license: GPL-3.0-or-later
+  copyright: "2025 LabWu @ University of Connecticut"
+  keywords:
+    - cell lineage tree
+    - single-cell sequencing
+    - copy number alteration
+    - SNV
+    - GPU
+
+  toc:
+    - file: index.md
+
+    - title: Installation
+      children:
+        - file: installation/installation.md
+        - file: installation/gpu.md
+
+    - title: Tutorials
+      children:
+        - file: tutorials/usage.ipynb
+        - file: tutorials/input.ipynb
+        - file: tutorials/simulation.ipynb
+
+    - title: Reference
+      children:
+        - file: cli.md
+        - file: performance.md
+
+    - file: citation.md
+
+    - file: release.md
+
+site:
+  template: book-theme
+  options:
+    # Don't print the author/affiliation block at the top of every page.
+    # The authors are still declared under `project` above, so they stay in the
+    # page metadata; the citation page is where readers are pointed instead.
+    hide_authors: true
+
+    logo: imgs/logo-flat-light.png
+    logo_dark: imgs/logo-flat.png
